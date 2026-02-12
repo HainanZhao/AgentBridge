@@ -16,6 +16,11 @@ if (!process.env.TELEGRAM_TOKEN) {
   process.exit(1);
 }
 
+if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !process.env.TELEGRAM_TOKEN.includes(':')) {
+  console.error('Error: TELEGRAM_TOKEN looks invalid. Set a real token from @BotFather in your config/env.');
+  process.exit(1);
+}
+
 const GEMINI_COMMAND = process.env.GEMINI_COMMAND || 'gemini';
 const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '120000', 10);
 const GEMINI_NO_OUTPUT_TIMEOUT_MS = parseInt(process.env.GEMINI_NO_OUTPUT_TIMEOUT_MS || '60000', 10);
@@ -24,7 +29,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || '';
 const ACP_PERMISSION_STRATEGY = process.env.ACP_PERMISSION_STRATEGY || 'allow_once';
 const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '60000', 10);
 const ACP_PREWARM_RETRY_MS = parseInt(process.env.ACP_PREWARM_RETRY_MS || '30000', 10);
-const AGENT_BRIDGE_HOME = process.env.AGENT_BRIDGE_HOME || path.join(os.homedir(), '.agent-bridge');
+const AGENT_BRIDGE_HOME = process.env.AGENT_BRIDGE_HOME || path.join(os.homedir(), '.gemini-bridge');
 const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'MEMORY.md');
 const MEMORY_MAX_CHARS = parseInt(process.env.MEMORY_MAX_CHARS || '12000', 10);
 
@@ -46,6 +51,8 @@ let acpInitPromise = null;
 let activePromptCollector = null;
 let messageSequence = 0;
 let acpPrewarmRetryTimer = null;
+let geminiStderrTail = '';
+const GEMINI_STDERR_TAIL_MAX = 4000;
 
 function logInfo(message, details) {
   const timestamp = new Date().toISOString();
@@ -56,14 +63,21 @@ function logInfo(message, details) {
   console.log(`[${timestamp}] ${message}`);
 }
 
+function appendGeminiStderrTail(text) {
+  geminiStderrTail = `${geminiStderrTail}${text}`;
+  if (geminiStderrTail.length > GEMINI_STDERR_TAIL_MAX) {
+    geminiStderrTail = geminiStderrTail.slice(-GEMINI_STDERR_TAIL_MAX);
+  }
+}
+
 function ensureMemoryFile() {
   fs.mkdirSync(path.dirname(MEMORY_FILE_PATH), { recursive: true });
 
   if (!fs.existsSync(MEMORY_FILE_PATH)) {
     const template = [
-      '# Agent Bridge Memory',
+      '# Gemini Bridge Memory',
       '',
-      'This file stores durable memory notes for Agent Bridge.',
+      'This file stores durable memory notes for Gemini Bridge.',
       '',
       '## Notes',
       '',
@@ -162,6 +176,7 @@ function resetAcpRuntime() {
     geminiProcess.kill('SIGTERM');
   }
   geminiProcess = null;
+  geminiStderrTail = '';
 
   scheduleAcpPrewarm('runtime reset');
 }
@@ -194,7 +209,12 @@ function scheduleAcpPrewarm(reason) {
 
 function buildGeminiAcpArgs() {
   const args = ['--experimental-acp'];
-  args.push('--include-directories', AGENT_BRIDGE_HOME);
+
+  const includeDirectories = new Set([AGENT_BRIDGE_HOME, os.homedir()]);
+
+  for (const includeDirectory of includeDirectories) {
+    args.push('--include-directories', includeDirectory);
+  }
 
   if (GEMINI_APPROVAL_MODE) {
     args.push('--approval-mode', GEMINI_APPROVAL_MODE);
@@ -222,13 +242,16 @@ async function ensureAcpSession() {
   acpInitPromise = (async () => {
     const args = buildGeminiAcpArgs();
     logInfo('Starting Gemini ACP process', { command: GEMINI_COMMAND, args });
+    geminiStderrTail = '';
     geminiProcess = spawn(GEMINI_COMMAND, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: process.cwd(),
     });
 
     geminiProcess.stderr.on('data', (chunk) => {
-      const text = chunk.toString().trim();
+      const rawText = chunk.toString();
+      appendGeminiStderrTail(rawText);
+      const text = rawText.trim();
       if (text) {
         console.error(`[gemini] ${text}`);
       }
@@ -254,19 +277,35 @@ async function ensureAcpSession() {
 
     acpConnection = new acp.ClientSideConnection(() => acpClient, stream);
 
-    await acpConnection.initialize({
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: {},
-    });
-    logInfo('ACP connection initialized');
+    try {
+      await acpConnection.initialize({
+        protocolVersion: acp.PROTOCOL_VERSION,
+        clientCapabilities: {},
+      });
+      logInfo('ACP connection initialized');
 
-    const session = await acpConnection.newSession({
-      cwd: process.cwd(),
-      mcpServers: [],
-    });
+      const session = await acpConnection.newSession({
+        cwd: process.cwd(),
+        mcpServers: [],
+      });
 
-    acpSessionId = session.sessionId;
-    logInfo('ACP session ready', { sessionId: acpSessionId });
+      acpSessionId = session.sessionId;
+      logInfo('ACP session ready', { sessionId: acpSessionId });
+    } catch (error) {
+      const baseMessage = error?.message || String(error);
+      const isInternalError = baseMessage.includes('Internal error');
+      const hint = isInternalError
+        ? 'Gemini ACP newSession returned Internal error. This is often caused by a local MCP server or skill initialization issue. Try launching `gemini` directly and checking MCP/skills diagnostics.'
+        : '';
+
+      logInfo('ACP initialization failed', {
+        error: baseMessage,
+        stderrTail: geminiStderrTail || '(empty)',
+      });
+
+      resetAcpRuntime();
+      throw new Error(hint ? `${baseMessage}. ${hint}` : baseMessage);
+    }
   })();
 
   try {
@@ -486,6 +525,7 @@ messagingClient.launch()
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       acpPrewarmRetryMs: ACP_PREWARM_RETRY_MS,
       memoryFilePath: MEMORY_FILE_PATH,
+      mcpSkillsSource: 'local Gemini CLI defaults (no MCP override)',
       acpMode: `${GEMINI_COMMAND} --experimental-acp`,
     });
 
@@ -502,6 +542,12 @@ messagingClient.launch()
     }
   })
   .catch((error) => {
+    if (error?.response?.error_code === 404 && error?.on?.method === 'getMe') {
+      console.error('Failed to launch bot: Telegram token is invalid (getMe returned 404 Not Found).');
+      console.error('Update TELEGRAM_TOKEN in ~/.gemini-bridge/config.json or env and restart.');
+      process.exit(1);
+    }
+
     console.error('Failed to launch bot:', error);
     process.exit(1);
   });

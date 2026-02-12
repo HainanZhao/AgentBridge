@@ -72,14 +72,14 @@ GEMINI_NO_OUTPUT_TIMEOUT_MS=60000
 After install, the package exposes a CLI command:
 
 ```bash
-agent-bridge
+gemini-bridge
 ```
 
 Local development alternatives:
 
 ```bash
 npm run cli
-npx agent-bridge
+npx gemini-bridge
 ```
 
 ### Config File (CLI)
@@ -87,7 +87,7 @@ npx agent-bridge
 On first run, the CLI automatically creates:
 
 ```text
-~/.agent-bridge/config.json
+~/.gemini-bridge/config.json
 ```
 
 with placeholder values, then exits so you can edit it.
@@ -95,13 +95,13 @@ with placeholder values, then exits so you can edit it.
 After updating placeholders, run again:
 
 ```bash
-agent-bridge
+gemini-bridge
 ```
 
 You can also use a custom path:
 
 ```bash
-agent-bridge --config /path/to/config.json
+gemini-bridge --config /path/to/config.json
 ```
 
 If the custom config path does not exist, a template file is created there as well.
@@ -109,7 +109,7 @@ If the custom config path does not exist, a template file is created there as we
 You can still bootstrap from the example file if preferred:
 
 ```bash
-cp agent-bridge.config.example.json ~/.agent-bridge/config.json
+cp gemini-bridge.config.example.json ~/.gemini-bridge/config.json
 ```
 
 Environment variables still work and take precedence over config values.
@@ -119,7 +119,7 @@ Environment variables still work and take precedence over config values.
 Simple background run:
 
 ```bash
-nohup agent-bridge > agent-bridge.log 2>&1 &
+nohup gemini-bridge > gemini-bridge.log 2>&1 &
 ```
 
 Recommended for production: PM2 (see section below).
@@ -188,14 +188,15 @@ pm2 save
 | `ACP_PERMISSION_STRATEGY` | No | allow_once | Auto-select ACP permission option kind (`allow_once`, `reject_once`, or `cancelled`) |
 | `MAX_RESPONSE_LENGTH` | No | 4000 | Maximum response length in characters to prevent memory issues |
 | `HEARTBEAT_INTERVAL_MS` | No | 60000 | Server heartbeat log interval in milliseconds (`0` disables heartbeat logs) |
-| `AGENT_BRIDGE_HOME` | No | ~/.agent-bridge | Home directory for Agent Bridge runtime files |
-| `MEMORY_FILE_PATH` | No | ~/.agent-bridge/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
+| `AGENT_BRIDGE_HOME` | No | ~/.gemini-bridge | Home directory for Gemini Bridge runtime files |
+| `MEMORY_FILE_PATH` | No | ~/.gemini-bridge/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
 | `MEMORY_MAX_CHARS` | No | 12000 | Max memory-file characters injected into prompt context |
 
 ### Persistent Memory File
 
-- The bridge ensures a memory file exists at `~/.agent-bridge/MEMORY.md` on startup.
-- Gemini is started with `--include-directories ~/.agent-bridge` so it can access that file.
+- The bridge ensures a memory file exists at `~/.gemini-bridge/MEMORY.md` on startup.
+- Gemini is started with include access to both `~/.gemini-bridge` and your full home directory (`~/`).
+- ACP session setup uses the required `mcpServers` field with an empty array and relies on Gemini CLI runtime defaults for MCP/skills loading.
 - Each prompt includes memory instructions and current `MEMORY.md` content.
 - When asked to memorize/remember something, Gemini is instructed to append new notes under `## Notes`.
 

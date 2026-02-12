@@ -1,16 +1,16 @@
 {
-  "name": "agent-bridge",
-  "version": "0.1.0",
+  "name": "gemini-bridge",
+  "version": "0.0.1",
   "description": "A bridge connecting messaging bot to Agent Gemini CLI using Agent Communication Protocol (ACP)",
   "main": "index.js",
   "type": "module",
   "bin": {
-    "agent-bridge": "./bin/agent-bridge.js"
+    "gemini-bridge": "./bin/cli.js"
   },
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "cli": "node ./bin/agent-bridge.js"
+    "cli": "node ./bin/cli.js"
   },
   "keywords": [
     "telegram",

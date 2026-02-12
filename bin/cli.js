@@ -21,8 +21,8 @@ const ENV_KEY_MAP = {
 	memoryMaxChars: 'MEMORY_MAX_CHARS',
 };
 
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.agent-bridge', 'config.json');
-const DEFAULT_AGENT_BRIDGE_HOME = path.join(os.homedir(), '.agent-bridge');
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.gemini-bridge', 'config.json');
+const DEFAULT_AGENT_BRIDGE_HOME = path.join(os.homedir(), '.gemini-bridge');
 const DEFAULT_MEMORY_FILE_PATH = path.join(DEFAULT_AGENT_BRIDGE_HOME, 'MEMORY.md');
 const DEFAULT_CONFIG_TEMPLATE = {
 	telegramToken: 'your_telegram_bot_token_here',
@@ -35,19 +35,19 @@ const DEFAULT_CONFIG_TEMPLATE = {
 	geminiNoOutputTimeoutMs: 60000,
 	maxResponseLength: 4000,
 	heartbeatIntervalMs: 60000,
-	agentBridgeHome: '~/.agent-bridge',
-	memoryFilePath: '~/.agent-bridge/MEMORY.md',
+	agentBridgeHome: '~/.gemini-bridge',
+	memoryFilePath: '~/.gemini-bridge/MEMORY.md',
 	memoryMaxChars: 12000,
 };
 
 function printHelp() {
-	console.log(`agent-bridge
+	console.log(`gemini-bridge
 
 Usage:
-	agent-bridge [--config <path>]
+	gemini-bridge [--config <path>]
 
 Options:
-	--config <path>   Path to JSON config file (default: ~/.agent-bridge/config.json)
+	--config <path>   Path to JSON config file (default: ~/.gemini-bridge/config.json)
 	-h, --help        Show this help message
 
 Config precedence:
@@ -58,7 +58,7 @@ Config precedence:
 
 function parseArgs(argv) {
 	const result = {
-		configPath: process.env.AGENT_BRIDGE_CONFIG || DEFAULT_CONFIG_PATH,
+		configPath: process.env.GEMINI_BRIDGE_CONFIG || process.env.AGENT_BRIDGE_CONFIG || DEFAULT_CONFIG_PATH,
 		help: false,
 	};
 
@@ -211,27 +211,27 @@ try {
 	const configState = ensureConfigFile(args.configPath);
 	const memoryState = ensureMemoryFromEnv();
 	if (memoryState.created) {
-		console.log(`[agent-bridge] Created memory file: ${memoryState.path}`);
+		console.log(`[gemini-bridge] Created memory file: ${memoryState.path}`);
 	}
 
 	if (configState.created) {
-		console.log(`[agent-bridge] Created config template: ${configState.path}`);
-		console.log('[agent-bridge] Fill in placeholder values, then run agent-bridge again.');
+		console.log(`[gemini-bridge] Created config template: ${configState.path}`);
+		console.log('[gemini-bridge] Fill in placeholder values, then run gemini-bridge again.');
 		process.exit(0);
 	}
 
 	const loadedConfigPath = loadConfigFile(args.configPath);
 	if (loadedConfigPath) {
-		console.log(`[agent-bridge] Loaded config: ${loadedConfigPath}`);
+		console.log(`[gemini-bridge] Loaded config: ${loadedConfigPath}`);
 	}
 
 	const postConfigMemoryState = ensureMemoryFromEnv();
 	if (postConfigMemoryState.created) {
-		console.log(`[agent-bridge] Created memory file: ${postConfigMemoryState.path}`);
+		console.log(`[gemini-bridge] Created memory file: ${postConfigMemoryState.path}`);
 	}
 
 	await import('../index.js');
 } catch (error) {
-	console.error(`[agent-bridge] ${error.message}`);
+	console.error(`[gemini-bridge] ${error.message}`);
 	process.exit(1);
 }
