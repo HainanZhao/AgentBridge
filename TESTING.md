@@ -1,0 +1,239 @@
+# Scheduler API Manual Testing Guide
+
+This guide walks through manual testing of the scheduler API functionality.
+
+## Prerequisites
+
+1. The bridge must be running with a valid Telegram bot token
+2. You must have sent at least one message to the bot to establish a chat binding
+3. `curl` and `jq` must be installed for the test commands
+
+## Test Setup
+
+1. Start the bridge in development mode:
+```bash
+npm run dev
+```
+
+2. In another terminal, verify the server is running:
+```bash
+curl http://127.0.0.1:8787/healthz
+# Expected: {"ok":true}
+```
+
+## Test Cases
+
+### Test 1: Create a Recurring Schedule
+
+Create a schedule that runs every minute:
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is the current time?",
+    "description": "Test recurring - every minute",
+    "cronExpression": "* * * * *"
+  }' | jq .
+```
+
+**Expected Result:**
+- HTTP 201 response
+- JSON with `ok: true` and schedule details including an `id`
+
+**Save the schedule ID** from the response for later tests.
+
+### Test 2: List All Schedules
+
+```bash
+curl http://127.0.0.1:8787/api/schedule | jq .
+```
+
+**Expected Result:**
+- HTTP 200 response
+- JSON array containing the schedule from Test 1
+
+### Test 3: Get a Specific Schedule
+
+Replace `SCHEDULE_ID` with the ID from Test 1:
+
+```bash
+curl http://127.0.0.1:8787/api/schedule/SCHEDULE_ID | jq .
+```
+
+**Expected Result:**
+- HTTP 200 response
+- JSON with the schedule details
+
+### Test 4: Wait for Schedule Execution
+
+Wait for 60-65 seconds and observe:
+
+1. Check the bridge logs for:
+   ```
+   [timestamp] Executing scheduled job { scheduleId: '...', message: '...' }
+   ```
+
+2. Check your Telegram chat for a message like:
+   ```
+   🔔 Scheduled task completed:
+
+   Test recurring - every minute
+
+   [Gemini's response about the current time]
+   ```
+
+### Test 5: Create a One-Time Schedule
+
+Create a schedule that runs in 30 seconds:
+
+```bash
+# Generate a timestamp 30 seconds from now
+RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
+
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"message\": \"This is a one-time test message\",
+    \"description\": \"Test one-time schedule\",
+    \"oneTime\": true,
+    \"runAt\": \"${RUN_AT}\"
+  }" | jq .
+```
+
+**Expected Result:**
+- HTTP 201 response
+- Schedule created with `oneTime: true` and `runAt` timestamp
+
+Wait 30+ seconds and verify:
+1. The message appears in Telegram
+2. The schedule is automatically removed (verify with List API)
+
+### Test 6: Test Invalid Cron Expression
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Test",
+    "cronExpression": "invalid cron"
+  }' | jq .
+```
+
+**Expected Result:**
+- HTTP 400 response
+- Error message about invalid cron expression
+
+### Test 7: Test Missing Required Fields
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{}' | jq .
+```
+
+**Expected Result:**
+- HTTP 400 response
+- Error message about missing `message` field
+
+### Test 8: Delete a Schedule
+
+Replace `SCHEDULE_ID` with the ID from Test 1:
+
+```bash
+curl -X DELETE http://127.0.0.1:8787/api/schedule/SCHEDULE_ID | jq .
+```
+
+**Expected Result:**
+- HTTP 200 response
+- JSON with `ok: true` and message "Schedule removed"
+
+Verify deletion by listing schedules - the deleted schedule should not appear.
+
+### Test 9: Test with Gemini CLI Integration
+
+Send a message to your Telegram bot:
+
+```
+Create a schedule to check the weather every day at 8am
+```
+
+**Expected Behavior:**
+1. Gemini should parse your request
+2. Call the scheduler API to create a recurring schedule
+3. Respond with confirmation of the schedule creation
+
+Then ask:
+```
+What schedules do I have?
+```
+
+**Expected Behavior:**
+1. Gemini should query the scheduler API
+2. List all active schedules
+3. Show details in a human-readable format
+
+Finally:
+```
+Cancel the weather check schedule
+```
+
+**Expected Behavior:**
+1. Gemini should identify the schedule to delete
+2. Call the DELETE endpoint
+3. Confirm the schedule was removed
+
+## Test with Authentication (Optional)
+
+If `CALLBACK_AUTH_TOKEN` is set in your configuration:
+
+```bash
+# This should fail with 401 Unauthorized
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Test",
+    "cronExpression": "0 9 * * *"
+  }' | jq .
+
+# This should succeed
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -H "x-callback-token: YOUR_TOKEN_HERE" \
+  -d '{
+    "message": "Test",
+    "cronExpression": "0 9 * * *"
+  }' | jq .
+```
+
+## Cleanup
+
+After testing, remove all test schedules:
+
+```bash
+# List all schedules
+curl http://127.0.0.1:8787/api/schedule | jq -r '.schedules[].id' | while read id; do
+  echo "Deleting schedule: $id"
+  curl -X DELETE http://127.0.0.1:8787/api/schedule/$id
+done
+```
+
+## Common Issues
+
+### Schedule not executing
+- Verify the bridge is still running
+- Check bridge logs for errors
+- Ensure Telegram chat binding is established (send a message to bot first)
+
+### 404 Not Found
+- Verify the callback server is running on port 8787
+- Check if another process is using the port
+
+### No response in Telegram
+- Ensure you've sent at least one message to the bot
+- Check if `lastIncomingChatId` is logged in the bridge output
+- Verify Gemini CLI is properly installed and configured
+
+### Timezone issues
+- Set the `TZ` environment variable to your timezone
+- Example: `TZ=America/New_York npm run dev`

@@ -11,6 +11,7 @@ A bridge that connects a Telegram bot to the Gemini CLI using the Agent Communic
 - 💾 **Persistent Context**: Maintains local session unlike standard API calls
 - 📬 **Sequential Queueing**: Processes one message at a time to avoid overlap and races
 - 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads directly to Telegram
+- ⏰ **Cron Scheduler**: Schedule tasks to run at specific times or on recurring basis via REST API
 
 ## Architecture
 
@@ -56,6 +57,8 @@ TELEGRAM_TOKEN=your_bot_token_here
 TYPING_INTERVAL_MS=4000
 GEMINI_TIMEOUT_MS=900000
 GEMINI_NO_OUTPUT_TIMEOUT_MS=60000
+ACP_STREAM_STDOUT=false
+ACP_DEBUG_STREAM=false
 ```
 
 ## Getting a Telegram Bot Token
@@ -184,9 +187,12 @@ pm2 save
 | `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing Telegram typing status |
 | `GEMINI_TIMEOUT_MS` | No | 900000 | Overall timeout for a single Gemini CLI run |
 | `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 60000 | Idle timeout; aborts if Gemini emits no output for this duration |
+| `GEMINI_KILL_GRACE_MS` | No | 5000 | Grace period after SIGTERM before escalating Gemini child process shutdown to SIGKILL |
 | `GEMINI_APPROVAL_MODE` | No | yolo | Gemini approval mode (for example: `default`, `auto_edit`, `yolo`, `plan`) |
 | `GEMINI_MODEL` | No | - | Gemini model override passed to CLI |
 | `ACP_PERMISSION_STRATEGY` | No | allow_once | Auto-select ACP permission option kind (`allow_once`, `reject_once`, or `cancelled`) |
+| `ACP_STREAM_STDOUT` | No | false | Writes raw ACP text chunks to stdout as they arrive |
+| `ACP_DEBUG_STREAM` | No | false | Writes structured ACP chunk timing/count debug logs |
 | `MAX_RESPONSE_LENGTH` | No | 4000 | Maximum response length in characters to prevent memory issues |
 | `HEARTBEAT_INTERVAL_MS` | No | 60000 | Server heartbeat log interval in milliseconds (`0` disables heartbeat logs) |
 | `CALLBACK_HOST` | No | 127.0.0.1 | Bind address for callback server |
@@ -196,15 +202,17 @@ pm2 save
 | `AGENT_BRIDGE_HOME` | No | ~/.gemini-bridge | Home directory for Gemini Bridge runtime files |
 | `MEMORY_FILE_PATH` | No | ~/.gemini-bridge/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
 | `MEMORY_MAX_CHARS` | No | 12000 | Max memory-file characters injected into prompt context |
+| `SCHEDULES_FILE_PATH` | No | ~/.gemini-bridge/schedules.json | Persistent scheduler storage file |
 
 ### Local Callback Endpoint
 
 The bridge exposes:
 
-- `POST http://127.0.0.1:8787/callback/telegram`
-- `GET http://127.0.0.1:8787/healthz`
+- `POST http://127.0.0.1:8787/callback/telegram` - Send messages to Telegram
+- `GET http://127.0.0.1:8787/healthz` - Health check
+- `POST/GET/DELETE http://127.0.0.1:8787/api/schedule`, `GET http://127.0.0.1:8787/api/schedule/:id` - Scheduler API
 
-Request body:
+Request body for callback:
 
 ```json
 {
@@ -224,6 +232,44 @@ curl -sS -X POST "http://127.0.0.1:8787/callback/telegram" \
   -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
   -d '{"text":"Backup completed at 03:00"}'
 ```
+
+### Scheduler API
+
+The bridge includes a built-in cron scheduler that allows you to schedule tasks to be executed through Gemini CLI:
+
+- Schedules are persisted to disk and automatically reloaded on restart.
+- Default storage path: `~/.gemini-bridge/schedules.json` (override with `SCHEDULES_FILE_PATH`).
+
+**Create a recurring schedule:**
+```bash
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Check my calendar and send me a summary",
+    "description": "Daily calendar summary",
+    "cronExpression": "0 9 * * *"
+  }'
+```
+
+**Create a one-time schedule:**
+```bash
+curl -X POST http://127.0.0.1:8787/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Remind me to take a break",
+    "oneTime": true,
+    "runAt": "2026-02-13T15:30:00Z"
+  }'
+```
+
+When a scheduled job runs, it executes the message through Gemini CLI and sends the response to your Telegram chat.
+
+**Ask Gemini to create schedules naturally:**
+- "Remind me to take a break in 30 minutes"
+- "Check my calendar every morning at 9am and send me a summary"
+- "Every Friday at 5pm, remind me to review my weekly goals"
+
+See [SCHEDULER.md](SCHEDULER.md) for complete API documentation.
 
 ### Persistent Memory File
 
