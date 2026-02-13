@@ -47,7 +47,7 @@ const DEFAULT_CONFIG_TEMPLATE = {
 	acpDebugStream: false,
 	heartbeatIntervalMs: 60000,
 	callbackHost: 'localhost',
-	callbackPort: 8787,
+	callbackPort: 8788,
 	callbackAuthToken: '',
 	callbackMaxBodyBytes: 65536,
 	agentBridgeHome: '~/.gemini-bridge',

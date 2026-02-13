@@ -35,7 +35,7 @@ Gemini will handle all the API calls automatically!
 ### 1. Create a Recurring Schedule
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "What time is it?",
@@ -69,7 +69,7 @@ if ! RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null); then
   RUN_AT=$(date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
 fi
 
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d "{
     \"message\": \"Test reminder\",
@@ -81,13 +81,13 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 ### 3. List All Schedules
 
 ```bash
-curl http://127.0.0.1:8787/api/schedule | jq .
+curl http://127.0.0.1:8788/api/schedule | jq .
 ```
 
 ### 4. Delete a Schedule
 
 ```bash
-curl -X DELETE http://127.0.0.1:8787/api/schedule/SCHEDULE_ID
+curl -X DELETE http://127.0.0.1:8788/api/schedule/SCHEDULE_ID
 ```
 
 ## Common Cron Expressions
@@ -136,7 +136,7 @@ Today's events:
      RUN_AT=$(date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
    fi
    
-   curl -X POST http://127.0.0.1:8787/api/schedule \
+   curl -X POST http://127.0.0.1:8788/api/schedule \
      -H "Content-Type: application/json" \
      -d "{
        \"message\": \"Hello! This is a test scheduled message.\",
@@ -158,7 +158,7 @@ Today's events:
 If you have `CALLBACK_AUTH_TOKEN` set in your config:
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -H "x-callback-token: YOUR_TOKEN_HERE" \
   -d '{
@@ -180,8 +180,8 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 
 ### Can't reach API
 **Solution:**
-- Verify bridge is running: `curl http://127.0.0.1:8787/healthz`
-- Check if port 8787 is available
+- Verify bridge is running: `curl http://127.0.0.1:8788/healthz`
+- Check if port 8788 is available
 - Look for errors in bridge logs
 
 ## Next Steps

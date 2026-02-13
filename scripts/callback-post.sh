@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${CALLBACK_BASE_URL:-http://127.0.0.1:8787}"
+BASE_URL="${CALLBACK_BASE_URL:-http://127.0.0.1:8788}"
 ENDPOINT="$BASE_URL/callback/telegram"
 MESSAGE="${1:-Callback test from gemini-bridge}"
 

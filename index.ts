@@ -44,7 +44,7 @@ const SCHEDULES_FILE_PATH = process.env.SCHEDULES_FILE_PATH || path.join(AGENT_B
 const CALLBACK_CHAT_STATE_FILE_PATH = path.join(AGENT_BRIDGE_HOME, 'callback-chat-state.json');
 const MEMORY_MAX_CHARS = parseInt(process.env.MEMORY_MAX_CHARS || '12000', 10);
 const CALLBACK_HOST = process.env.CALLBACK_HOST || 'localhost';
-const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || '8787', 10);
+const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || '8788', 10);
 const CALLBACK_AUTH_TOKEN = process.env.CALLBACK_AUTH_TOKEN || '';
 const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || '65536', 10);
 
@@ -1031,6 +1031,7 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
   let lastFlushAt = 0;
   let finalizedViaLiveMessage = false;
   let startingLiveMessage: Promise<void> | null = null;
+  let promptCompleted = false;
 
   const clearFlushTimer = () => {
     if (flushTimer) {
@@ -1126,15 +1127,28 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
       void ensureLiveMessageStarted();
       void scheduleFlush();
     });
+    promptCompleted = true;
 
     clearFlushTimer();
     await flushPreview(true);
+
+    if (startingLiveMessage) {
+      try {
+        await startingLiveMessage;
+      } catch (_) {
+      }
+    }
 
     if (liveMessageId) {
       try {
         await messageContext.finalizeLiveMessage(liveMessageId, fullResponse || 'No response received.');
         finalizedViaLiveMessage = true;
-      } catch (_) {
+      } catch (error: any) {
+        finalizedViaLiveMessage = true;
+        logInfo('Live message finalize failed; keeping streamed message as final output', {
+          requestId: messageRequestId,
+          error: getErrorMessage(error),
+        });
       }
     }
 
@@ -1150,7 +1164,7 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
     }
   } finally {
     clearFlushTimer();
-    if (liveMessageId && !finalizedViaLiveMessage) {
+    if (liveMessageId && !finalizedViaLiveMessage && !promptCompleted) {
       try {
         await messageContext.removeMessage(liveMessageId);
       } catch (_) {

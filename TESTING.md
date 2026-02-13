@@ -17,7 +17,7 @@ npm run dev
 
 2. In another terminal, verify the server is running:
 ```bash
-curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:8788/healthz
 # Expected: {"ok":true}
 ```
 
@@ -28,7 +28,7 @@ curl http://127.0.0.1:8787/healthz
 Create a schedule that runs every minute:
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "What is the current time?",
@@ -46,7 +46,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 ### Test 2: List All Schedules
 
 ```bash
-curl http://127.0.0.1:8787/api/schedule | jq .
+curl http://127.0.0.1:8788/api/schedule | jq .
 ```
 
 **Expected Result:**
@@ -58,7 +58,7 @@ curl http://127.0.0.1:8787/api/schedule | jq .
 Replace `SCHEDULE_ID` with the ID from Test 1:
 
 ```bash
-curl http://127.0.0.1:8787/api/schedule/SCHEDULE_ID | jq .
+curl http://127.0.0.1:8788/api/schedule/SCHEDULE_ID | jq .
 ```
 
 **Expected Result:**
@@ -91,7 +91,7 @@ Create a schedule that runs in 30 seconds:
 # Generate a timestamp 30 seconds from now
 RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
 
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d "{
     \"message\": \"This is a one-time test message\",
@@ -112,7 +112,7 @@ Wait 30+ seconds and verify:
 ### Test 6: Test Invalid Cron Expression
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Test",
@@ -127,7 +127,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 ### Test 7: Test Missing Required Fields
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{}' | jq .
 ```
@@ -141,7 +141,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 Replace `SCHEDULE_ID` with the ID from Test 1:
 
 ```bash
-curl -X DELETE http://127.0.0.1:8787/api/schedule/SCHEDULE_ID | jq .
+curl -X DELETE http://127.0.0.1:8788/api/schedule/SCHEDULE_ID | jq .
 ```
 
 **Expected Result:**
@@ -189,7 +189,7 @@ If `CALLBACK_AUTH_TOKEN` is set in your configuration:
 
 ```bash
 # This should fail with 401 Unauthorized
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Test",
@@ -197,7 +197,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
   }' | jq .
 
 # This should succeed
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -H "x-callback-token: YOUR_TOKEN_HERE" \
   -d '{
@@ -212,9 +212,9 @@ After testing, remove all test schedules:
 
 ```bash
 # List all schedules
-curl http://127.0.0.1:8787/api/schedule | jq -r '.schedules[].id' | while read id; do
+curl http://127.0.0.1:8788/api/schedule | jq -r '.schedules[].id' | while read id; do
   echo "Deleting schedule: $id"
-  curl -X DELETE http://127.0.0.1:8787/api/schedule/$id
+  curl -X DELETE http://127.0.0.1:8788/api/schedule/$id
 done
 ```
 
@@ -226,7 +226,7 @@ done
 - Ensure Telegram chat binding is established (send a message to bot first)
 
 ### 404 Not Found
-- Verify the callback server is running on port 8787
+- Verify the callback server is running on port 8788
 - Check if another process is using the port
 
 ### No response in Telegram

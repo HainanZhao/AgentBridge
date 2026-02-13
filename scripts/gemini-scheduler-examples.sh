@@ -3,7 +3,7 @@
 # Example: How Gemini CLI can interact with the Scheduler API
 # This demonstrates the curl commands that Gemini would execute when asked to create schedules
 
-BASE_URL="http://127.0.0.1:8787"
+BASE_URL="http://127.0.0.1:8788"
 TOKEN="" # Set this if CALLBACK_AUTH_TOKEN is configured
 
 # Helper function to add auth header if token is set

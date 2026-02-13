@@ -196,7 +196,7 @@ pm2 save
 | `MAX_RESPONSE_LENGTH` | No | 4000 | Maximum response length in characters to prevent memory issues |
 | `HEARTBEAT_INTERVAL_MS` | No | 60000 | Server heartbeat log interval in milliseconds (`0` disables heartbeat logs) |
 | `CALLBACK_HOST` | No | 127.0.0.1 | Bind address for callback server |
-| `CALLBACK_PORT` | No | 8787 | Bind port for callback server |
+| `CALLBACK_PORT` | No | 8788 | Bind port for callback server |
 | `CALLBACK_AUTH_TOKEN` | No | - | Optional bearer/token guard for callback endpoint |
 | `CALLBACK_MAX_BODY_BYTES` | No | 65536 | Maximum accepted callback request body size |
 | `AGENT_BRIDGE_HOME` | No | ~/.gemini-bridge | Home directory for Gemini Bridge runtime files |
@@ -208,9 +208,9 @@ pm2 save
 
 The bridge exposes:
 
-- `POST http://127.0.0.1:8787/callback/telegram` - Send messages to Telegram
-- `GET http://127.0.0.1:8787/healthz` - Health check
-- `POST/GET/DELETE http://127.0.0.1:8787/api/schedule`, `GET http://127.0.0.1:8787/api/schedule/:id` - Scheduler API
+- `POST http://127.0.0.1:8788/callback/telegram` - Send messages to Telegram
+- `GET http://127.0.0.1:8788/healthz` - Health check
+- `POST/GET/DELETE http://127.0.0.1:8788/api/schedule`, `GET http://127.0.0.1:8788/api/schedule/:id` - Scheduler API
 
 Request body for callback:
 
@@ -227,7 +227,7 @@ Request body for callback:
 Cron-friendly example:
 
 ```bash
-curl -sS -X POST "http://127.0.0.1:8787/callback/telegram" \
+curl -sS -X POST "http://127.0.0.1:8788/callback/telegram" \
   -H "Content-Type: application/json" \
   -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
   -d '{"text":"Backup completed at 03:00"}'
@@ -242,7 +242,7 @@ The bridge includes a built-in cron scheduler that allows you to schedule tasks 
 
 **Create a recurring schedule:**
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Check my calendar and send me a summary",
@@ -253,7 +253,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 
 **Create a one-time schedule:**
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Remind me to take a break",
