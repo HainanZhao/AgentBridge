@@ -29,7 +29,10 @@ echo ""
 
 # Test 3: Create a one-time schedule (30 seconds from now)
 echo "3. Creating a one-time schedule (30 seconds from now)..."
-RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ")
+if ! RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null); then
+  # Fallback for macOS/BSD date
+  RUN_AT=$(date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
+fi
 ONE_TIME_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/schedule" \
   -H "Content-Type: application/json" \
   -d "{

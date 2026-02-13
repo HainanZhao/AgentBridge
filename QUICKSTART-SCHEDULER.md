@@ -64,7 +64,10 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 
 ```bash
 # Schedule for 30 seconds from now
-RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ")
+if ! RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null); then
+  # Fallback for macOS/BSD date
+  RUN_AT=$(date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
+fi
 
 curl -X POST http://127.0.0.1:8787/api/schedule \
   -H "Content-Type: application/json" \
@@ -128,7 +131,10 @@ Today's events:
 
 2. **Create a test schedule (runs in 30 seconds):**
    ```bash
-   RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ")
+   if ! RUN_AT=$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null); then
+     # Fallback for macOS/BSD date
+     RUN_AT=$(date -u -v+30S +"%Y-%m-%dT%H:%M:%SZ")
+   fi
    
    curl -X POST http://127.0.0.1:8787/api/schedule \
      -H "Content-Type: application/json" \

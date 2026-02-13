@@ -16,6 +16,7 @@ export interface ScheduleJob {
   config: ScheduleConfig;
   task?: cron.ScheduledTask;
   timeout?: NodeJS.Timeout;
+  inFlight?: boolean;
 }
 
 export class CronScheduler {
@@ -93,12 +94,21 @@ export class CronScheduler {
       return;
     }
 
+    // Skip if job is already in flight (prevents overlapping executions)
+    if (job.inFlight) {
+      console.warn(`[CronScheduler] Job ${scheduleId} skipped - previous execution still in progress`);
+      return;
+    }
+
+    job.inFlight = true;
     job.config.lastRun = new Date();
 
     try {
       await this.jobCallback(job.config);
     } catch (error: any) {
       console.error(`[CronScheduler] Job ${scheduleId} execution failed:`, error);
+    } finally {
+      job.inFlight = false;
     }
   }
 

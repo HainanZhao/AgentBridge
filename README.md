@@ -204,7 +204,7 @@ The bridge exposes:
 
 - `POST http://127.0.0.1:8787/callback/telegram` - Send messages to Telegram
 - `GET http://127.0.0.1:8787/healthz` - Health check
-- `POST/GET/DELETE http://127.0.0.1:8787/api/schedule` - Scheduler API
+- `POST/GET/DELETE http://127.0.0.1:8787/api/schedule`, `GET http://127.0.0.1:8787/api/schedule/:id` - Scheduler API
 
 Request body for callback:
 

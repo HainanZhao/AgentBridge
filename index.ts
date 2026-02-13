@@ -76,9 +76,10 @@ async function handleScheduledJob(schedule: ScheduleConfig): Promise<void> {
     
     const targetChatId = resolveChatId(lastIncomingChatId);
     if (targetChatId) {
+      const errorMessage = `❌ Scheduled task failed: ${schedule.description || schedule.message}\n\nError: ${error?.message || String(error)}`;
       await messagingClient.sendTextToChat(
         targetChatId, 
-        `❌ Scheduled task failed: ${schedule.description || schedule.message}\n\nError: ${error?.message || String(error)}`
+        normalizeOutgoingText(errorMessage)
       );
     }
   }
@@ -256,7 +257,7 @@ async function handleSchedulerRequest(req: http.IncomingMessage, res: http.Serve
         message: body.message,
         description: body.description,
         cronExpression: body.cronExpression,
-        oneTime: body.oneTime || false,
+        oneTime: body.oneTime === true,
         runAt,
       });
 
