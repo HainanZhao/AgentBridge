@@ -238,8 +238,19 @@ async function handleSchedulerRequest(req: http.IncomingMessage, res: http.Serve
       const body = bodyText ? JSON.parse(bodyText) : {};
 
       // Validate required fields
-      if (!body.message) {
-        sendJson(res, 400, { ok: false, error: 'Field `message` is required' });
+      if (!body.message || typeof body.message !== 'string') {
+        sendJson(res, 400, { ok: false, error: 'Field `message` is required and must be a string' });
+        return;
+      }
+
+      // Validate optional string fields
+      if (body.description !== undefined && typeof body.description !== 'string') {
+        sendJson(res, 400, { ok: false, error: 'Field `description` must be a string' });
+        return;
+      }
+
+      if (body.cronExpression !== undefined && typeof body.cronExpression !== 'string') {
+        sendJson(res, 400, { ok: false, error: 'Field `cronExpression` must be a string' });
         return;
       }
 
