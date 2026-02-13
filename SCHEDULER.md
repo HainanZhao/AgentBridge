@@ -14,7 +14,7 @@ Schedules are persisted to disk and reloaded on startup. By default the file is 
 
 ## API Endpoints
 
-All scheduler endpoints are available at `http://127.0.0.1:8787/api/schedule`
+All scheduler endpoints are available at `http://127.0.0.1:8788/api/schedule`
 
 ### Authentication
 
@@ -31,7 +31,7 @@ Create a new recurring or one-time schedule.
 #### Recurring Schedule Example
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Check my calendar and send me a summary",
@@ -70,7 +70,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 #### One-Time Schedule Example
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/schedule \
+curl -X POST http://127.0.0.1:8788/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Remind me to take a break",
@@ -113,7 +113,7 @@ curl -X POST http://127.0.0.1:8787/api/schedule \
 List all active schedules.
 
 ```bash
-curl http://127.0.0.1:8787/api/schedule
+curl http://127.0.0.1:8788/api/schedule
 ```
 
 **Response:**
@@ -142,7 +142,7 @@ curl http://127.0.0.1:8787/api/schedule
 Get details of a specific schedule.
 
 ```bash
-curl http://127.0.0.1:8787/api/schedule/schedule_1707835800000_abc123
+curl http://127.0.0.1:8788/api/schedule/schedule_1707835800000_abc123
 ```
 
 **Response:**
@@ -169,7 +169,7 @@ curl http://127.0.0.1:8787/api/schedule/schedule_1707835800000_abc123
 Remove a schedule. This stops any future executions.
 
 ```bash
-curl -X DELETE http://127.0.0.1:8787/api/schedule/schedule_1707835800000_abc123
+curl -X DELETE http://127.0.0.1:8788/api/schedule/schedule_1707835800000_abc123
 ```
 
 **Response:**
@@ -250,6 +250,6 @@ The Gemini CLI is aware of the scheduler API through the system prompt. You can 
 No additional environment variables are required. The scheduler uses the existing callback server configuration:
 
 - `CALLBACK_HOST` - Host for callback server (default: 127.0.0.1)
-- `CALLBACK_PORT` - Port for callback server (default: 8787)
+- `CALLBACK_PORT` - Port for callback server (default: 8788)
 - `CALLBACK_AUTH_TOKEN` - Optional authentication token
 - `TZ` - Timezone for cron schedules (default: UTC)

@@ -12,7 +12,7 @@
   "maxResponseLength": 4000,
   "heartbeatIntervalMs": 60000,
   "callbackHost": "localhost",
-  "callbackPort": 8787,
+  "callbackPort": 8788,
   "callbackAuthToken": "",
   "callbackMaxBodyBytes": 65536,
   "schedulesFilePath": "~/.gemini-bridge/schedules.json"
