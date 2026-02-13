@@ -1,8 +1,9 @@
 {
   "apps": [
     {
-      "name": "telegram-gemini-bridge",
-      "script": "./index.js",
+      "name": "gemini-bridge",
+      "script": "gemini-bridge",
+      "interpreter": "none",
       "instances": 1,
       "exec_mode": "fork",
       "watch": false,

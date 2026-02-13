@@ -16,6 +16,10 @@ const ENV_KEY_MAP = {
 	geminiNoOutputTimeoutMs: 'GEMINI_NO_OUTPUT_TIMEOUT_MS',
 	maxResponseLength: 'MAX_RESPONSE_LENGTH',
 	heartbeatIntervalMs: 'HEARTBEAT_INTERVAL_MS',
+	callbackHost: 'CALLBACK_HOST',
+	callbackPort: 'CALLBACK_PORT',
+	callbackAuthToken: 'CALLBACK_AUTH_TOKEN',
+	callbackMaxBodyBytes: 'CALLBACK_MAX_BODY_BYTES',
 	agentBridgeHome: 'AGENT_BRIDGE_HOME',
 	memoryFilePath: 'MEMORY_FILE_PATH',
 	memoryMaxChars: 'MEMORY_MAX_CHARS',
@@ -31,10 +35,14 @@ const DEFAULT_CONFIG_TEMPLATE = {
 	geminiApprovalMode: 'default',
 	geminiModel: '',
 	acpPermissionStrategy: 'allow_once',
-	geminiTimeoutMs: 120000,
+	geminiTimeoutMs: 900000,
 	geminiNoOutputTimeoutMs: 60000,
 	maxResponseLength: 4000,
 	heartbeatIntervalMs: 60000,
+	callbackHost: '127.0.0.1',
+	callbackPort: 8787,
+	callbackAuthToken: '',
+	callbackMaxBodyBytes: 65536,
 	agentBridgeHome: '~/.gemini-bridge',
 	memoryFilePath: '~/.gemini-bridge/MEMORY.md',
 	memoryMaxChars: 12000,
@@ -188,6 +196,12 @@ function ensureMemoryFromEnv() {
 	return ensureMemoryFile(process.env.MEMORY_FILE_PATH || DEFAULT_MEMORY_FILE_PATH);
 }
 
+function logMemoryFileCreation(memoryState) {
+	if (memoryState.created) {
+		console.log(`[gemini-bridge] Created memory file: ${memoryState.path}`);
+	}
+}
+
 function loadConfigFile(configPath) {
 	const absolutePath = resolveConfigPath(configPath);
 	if (!fs.existsSync(absolutePath)) {
@@ -210,9 +224,7 @@ try {
 
 	const configState = ensureConfigFile(args.configPath);
 	const memoryState = ensureMemoryFromEnv();
-	if (memoryState.created) {
-		console.log(`[gemini-bridge] Created memory file: ${memoryState.path}`);
-	}
+	logMemoryFileCreation(memoryState);
 
 	if (configState.created) {
 		console.log(`[gemini-bridge] Created config template: ${configState.path}`);
@@ -226,9 +238,7 @@ try {
 	}
 
 	const postConfigMemoryState = ensureMemoryFromEnv();
-	if (postConfigMemoryState.created) {
-		console.log(`[gemini-bridge] Created memory file: ${postConfigMemoryState.path}`);
-	}
+	logMemoryFileCreation(postConfigMemoryState);
 
 	await import('../index.js');
 } catch (error) {

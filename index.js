@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -22,7 +23,7 @@ if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !proc
 }
 
 const GEMINI_COMMAND = process.env.GEMINI_COMMAND || 'gemini';
-const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '120000', 10);
+const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '900000', 10);
 const GEMINI_NO_OUTPUT_TIMEOUT_MS = parseInt(process.env.GEMINI_NO_OUTPUT_TIMEOUT_MS || '60000', 10);
 const GEMINI_APPROVAL_MODE = process.env.GEMINI_APPROVAL_MODE || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || '';
@@ -31,7 +32,12 @@ const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '600
 const ACP_PREWARM_RETRY_MS = parseInt(process.env.ACP_PREWARM_RETRY_MS || '30000', 10);
 const AGENT_BRIDGE_HOME = process.env.AGENT_BRIDGE_HOME || path.join(os.homedir(), '.gemini-bridge');
 const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'MEMORY.md');
+const CALLBACK_CHAT_STATE_FILE_PATH = path.join(AGENT_BRIDGE_HOME, 'callback-chat-state.json');
 const MEMORY_MAX_CHARS = parseInt(process.env.MEMORY_MAX_CHARS || '12000', 10);
+const CALLBACK_HOST = process.env.CALLBACK_HOST || '127.0.0.1';
+const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || '8787', 10);
+const CALLBACK_AUTH_TOKEN = process.env.CALLBACK_AUTH_TOKEN || '';
+const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || '65536', 10);
 
 // Typing indicator refresh interval (Telegram typing state expires quickly)
 const TYPING_INTERVAL_MS = parseInt(process.env.TYPING_INTERVAL_MS || '4000', 10);
@@ -52,7 +58,46 @@ let activePromptCollector = null;
 let messageSequence = 0;
 let acpPrewarmRetryTimer = null;
 let geminiStderrTail = '';
+let callbackServer = null;
+let lastIncomingChatId = null;
 const GEMINI_STDERR_TAIL_MAX = 4000;
+
+function ensureBridgeHomeDirectory() {
+  fs.mkdirSync(AGENT_BRIDGE_HOME, { recursive: true });
+}
+
+function loadPersistedCallbackChatId() {
+  try {
+    if (!fs.existsSync(CALLBACK_CHAT_STATE_FILE_PATH)) {
+      return null;
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(CALLBACK_CHAT_STATE_FILE_PATH, 'utf8'));
+    return resolveChatId(parsed?.chatId);
+  } catch (error) {
+    logInfo('Failed to load callback chat state', {
+      callbackChatStateFilePath: CALLBACK_CHAT_STATE_FILE_PATH,
+      error: error?.message || String(error),
+    });
+    return null;
+  }
+}
+
+function persistCallbackChatId(chatId) {
+  try {
+    ensureBridgeHomeDirectory();
+    fs.writeFileSync(
+      CALLBACK_CHAT_STATE_FILE_PATH,
+      `${JSON.stringify({ chatId: String(chatId), updatedAt: new Date().toISOString() }, null, 2)}\n`,
+      'utf8',
+    );
+  } catch (error) {
+    logInfo('Failed to persist callback chat state', {
+      callbackChatStateFilePath: CALLBACK_CHAT_STATE_FILE_PATH,
+      error: error?.message || String(error),
+    });
+  }
+}
 
 function logInfo(message, details) {
   const timestamp = new Date().toISOString();
@@ -70,7 +115,194 @@ function appendGeminiStderrTail(text) {
   }
 }
 
+function sendJson(res, statusCode, payload) {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(payload));
+}
+
+function isCallbackAuthorized(req) {
+  if (!CALLBACK_AUTH_TOKEN) {
+    return true;
+  }
+
+  const headerToken = req.headers['x-callback-token'];
+  const authHeader = req.headers.authorization;
+  const bearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length)
+    : null;
+
+  return headerToken === CALLBACK_AUTH_TOKEN || bearerToken === CALLBACK_AUTH_TOKEN;
+}
+
+function readRequestBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        reject(new Error(`Payload too large (>${maxBytes} bytes)`));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+function resolveChatId(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^-?\d+$/.test(normalized)) {
+    return normalized;
+  }
+
+  return normalized;
+}
+
+function normalizeOutgoingText(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.length <= MAX_RESPONSE_LENGTH) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_RESPONSE_LENGTH)}\n\n[Response truncated due to length]`;
+}
+
+async function handleCallbackRequest(req, res) {
+  const hostHeader = req.headers.host || `${CALLBACK_HOST}:${CALLBACK_PORT}`;
+  const requestUrl = new URL(req.url || '/', `http://${hostHeader}`);
+
+  if (requestUrl.pathname === '/healthz') {
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (requestUrl.pathname !== '/callback/telegram') {
+    sendJson(res, 404, { ok: false, error: 'Not found' });
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { ok: false, error: 'Method not allowed' });
+    return;
+  }
+
+  if (!isCallbackAuthorized(req)) {
+    sendJson(res, 401, { ok: false, error: 'Unauthorized' });
+    return;
+  }
+
+  let body = null;
+  try {
+    const bodyText = await readRequestBody(req, CALLBACK_MAX_BODY_BYTES);
+    body = bodyText ? JSON.parse(bodyText) : {};
+  } catch (error) {
+    sendJson(res, 400, { ok: false, error: error?.message || 'Invalid JSON body' });
+    return;
+  }
+
+  const callbackText = normalizeOutgoingText(body?.text);
+  if (!callbackText) {
+    sendJson(res, 400, { ok: false, error: 'Field `text` is required' });
+    return;
+  }
+
+  const targetChatId = resolveChatId(
+    body?.chatId
+    ?? requestUrl.searchParams.get('chatId')
+    ?? lastIncomingChatId,
+  );
+
+  if (!targetChatId) {
+    sendJson(res, 400, {
+      ok: false,
+      error: 'No chat id available. Send one Telegram message to the bot once to bind a target chat, or provide `chatId` in this callback request.',
+    });
+    return;
+  }
+
+  try {
+    await messagingClient.sendTextToChat(targetChatId, callbackText);
+    logInfo('Callback message sent', { targetChatId });
+    sendJson(res, 200, { ok: true, chatId: targetChatId });
+  } catch (error) {
+    sendJson(res, 500, { ok: false, error: error?.message || 'Failed to send Telegram message' });
+  }
+}
+
+function startCallbackServer() {
+  callbackServer = http.createServer((req, res) => {
+    handleCallbackRequest(req, res).catch((error) => {
+      sendJson(res, 500, { ok: false, error: error?.message || 'Internal callback server error' });
+    });
+  });
+
+  callbackServer.listen(CALLBACK_PORT, CALLBACK_HOST, () => {
+    logInfo('Callback server listening', {
+      host: CALLBACK_HOST,
+      port: CALLBACK_PORT,
+      authEnabled: Boolean(CALLBACK_AUTH_TOKEN),
+      endpoint: '/callback/telegram',
+    });
+  });
+
+  callbackServer.on('error', (error) => {
+    console.error('Callback server error:', error);
+  });
+}
+
+function stopCallbackServer() {
+  if (!callbackServer) {
+    return;
+  }
+
+  callbackServer.close();
+  callbackServer = null;
+}
+
+async function cancelActiveAcpPrompt() {
+  try {
+    if (acpConnection && acpSessionId) {
+      await acpConnection.cancel({ sessionId: acpSessionId });
+    }
+  } catch (_) {
+  }
+}
+
+function setupGracefulShutdown() {
+  const shutdownSignals = ['SIGINT', 'SIGTERM'];
+
+  for (const signal of shutdownSignals) {
+    process.once(signal, () => {
+      console.log(`Received ${signal}, stopping bot...`);
+      stopCallbackServer();
+      messagingClient.stop(signal);
+    });
+  }
+}
+
 function ensureMemoryFile() {
+  ensureBridgeHomeDirectory();
   fs.mkdirSync(path.dirname(MEMORY_FILE_PATH), { recursive: true });
 
   if (!fs.existsSync(MEMORY_FILE_PATH)) {
@@ -105,12 +337,21 @@ function readMemoryContext() {
 
 function buildPromptWithMemory(userPrompt) {
   const memoryContext = readMemoryContext() || '(No saved memory yet)';
+  const callbackEndpoint = `http://${CALLBACK_HOST}:${CALLBACK_PORT}/callback/telegram`;
 
   return [
     'System instruction:',
     `- Persistent memory file path: ${MEMORY_FILE_PATH}`,
     '- If user asks to remember/memorize/save for later, append a concise bullet under "## Notes" in that file.',
     '- Do not overwrite existing memory entries; append only.',
+    `- Callback endpoint for proactive notifications (cron/jobs): POST ${callbackEndpoint}`,
+    '- Callback payload should include a JSON `text` field; `chatId` is optional.',
+    `- Persisted callback chat binding file: ${CALLBACK_CHAT_STATE_FILE_PATH}`,
+    '- If no `chatId` is provided, the bridge sends to the persisted bound chat.',
+    '- For scheduled jobs, include callback delivery steps so results are pushed to Telegram when jobs complete.',
+    CALLBACK_AUTH_TOKEN
+      ? '- Callback auth is enabled: include `x-callback-token` (or bearer token) when creating callback requests.'
+      : '- Callback auth is disabled unless CALLBACK_AUTH_TOKEN is configured.',
     '',
     'Current memory context:',
     memoryContext,
@@ -411,23 +652,13 @@ async function runAcpPrompt(promptText) {
       }
 
       noOutputTimeout = setTimeout(async () => {
-        try {
-          if (acpConnection && acpSessionId) {
-            await acpConnection.cancel({ sessionId: acpSessionId });
-          }
-        } catch (_) {
-        }
+        await cancelActiveAcpPrompt();
         failOnce(new Error(`Gemini ACP produced no output for ${GEMINI_NO_OUTPUT_TIMEOUT_MS}ms`));
       }, GEMINI_NO_OUTPUT_TIMEOUT_MS);
     };
 
     const overallTimeout = setTimeout(async () => {
-      try {
-        if (acpConnection && acpSessionId) {
-          await acpConnection.cancel({ sessionId: acpSessionId });
-        }
-      } catch (_) {
-      }
+      await cancelActiveAcpPrompt();
       failOnce(new Error(`Gemini ACP timed out after ${GEMINI_TIMEOUT_MS}ms`));
     }, GEMINI_TIMEOUT_MS);
 
@@ -485,6 +716,11 @@ async function processSingleMessage(messageContext) {
  * Handles incoming text messages from Telegram
  */
 messagingClient.onTextMessage((messageContext) => {
+  if (messageContext.chatId !== undefined && messageContext.chatId !== null) {
+    lastIncomingChatId = String(messageContext.chatId);
+    persistCallbackChatId(lastIncomingChatId);
+  }
+
   enqueueMessage(messageContext)
     .catch(async (error) => {
       console.error('Error processing message:', error);
@@ -501,18 +737,15 @@ messagingClient.onError((error, messageContext) => {
 });
 
 // Graceful shutdown
-process.once('SIGINT', () => {
-  console.log('Received SIGINT, stopping bot...');
-  messagingClient.stop('SIGINT');
-});
-
-process.once('SIGTERM', () => {
-  console.log('Received SIGTERM, stopping bot...');
-  messagingClient.stop('SIGTERM');
-});
+setupGracefulShutdown();
 
 // Launch the bot
 logInfo('Starting Agent ACP Bridge...');
+ensureBridgeHomeDirectory();
+lastIncomingChatId = loadPersistedCallbackChatId();
+if (lastIncomingChatId) {
+  logInfo('Loaded callback chat binding', { chatId: lastIncomingChatId });
+}
 scheduleAcpPrewarm('startup');
 messagingClient.launch()
   .then(async () => {
@@ -525,9 +758,13 @@ messagingClient.launch()
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       acpPrewarmRetryMs: ACP_PREWARM_RETRY_MS,
       memoryFilePath: MEMORY_FILE_PATH,
+      callbackHost: CALLBACK_HOST,
+      callbackPort: CALLBACK_PORT,
       mcpSkillsSource: 'local Gemini CLI defaults (no MCP override)',
       acpMode: `${GEMINI_COMMAND} --experimental-acp`,
     });
+
+    startCallbackServer();
 
     scheduleAcpPrewarm('post-launch');
 

@@ -5,6 +5,7 @@ class TelegramMessageContext {
     this.ctx = ctx;
     this.typingIntervalMs = typingIntervalMs;
     this.text = ctx.message?.text || '';
+    this.chatId = ctx.chat?.id;
   }
 
   startTyping() {
@@ -48,6 +49,10 @@ export class TelegramMessagingClient {
 
   async launch() {
     await this.bot.launch();
+  }
+
+  async sendTextToChat(chatId, text) {
+    await this.bot.telegram.sendMessage(chatId, text);
   }
 
   stop(reason) {

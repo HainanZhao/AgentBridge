@@ -10,6 +10,7 @@ A bridge that connects a Telegram bot to the Gemini CLI using the Agent Communic
 - 🔒 **Privacy**: Runs on your hardware, you control data flow
 - 💾 **Persistent Context**: Maintains local session unlike standard API calls
 - 📬 **Sequential Queueing**: Processes one message at a time to avoid overlap and races
+- 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads directly to Telegram
 
 ## Architecture
 
@@ -53,7 +54,7 @@ Edit `.env` and add your Telegram bot token:
 ```env
 TELEGRAM_TOKEN=your_bot_token_here
 TYPING_INTERVAL_MS=4000
-GEMINI_TIMEOUT_MS=300000
+GEMINI_TIMEOUT_MS=900000
 GEMINI_NO_OUTPUT_TIMEOUT_MS=60000
 ```
 
@@ -181,16 +182,48 @@ pm2 save
 |----------|----------|---------|-------------|
 | `TELEGRAM_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
 | `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing Telegram typing status |
-| `GEMINI_TIMEOUT_MS` | No | 120000 | Overall timeout for a single Gemini CLI run |
+| `GEMINI_TIMEOUT_MS` | No | 900000 | Overall timeout for a single Gemini CLI run |
 | `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 60000 | Idle timeout; aborts if Gemini emits no output for this duration |
 | `GEMINI_APPROVAL_MODE` | No | - | Gemini approval mode (for example: `default`, `auto_edit`, `yolo`, `plan`) |
 | `GEMINI_MODEL` | No | - | Gemini model override passed to CLI |
 | `ACP_PERMISSION_STRATEGY` | No | allow_once | Auto-select ACP permission option kind (`allow_once`, `reject_once`, or `cancelled`) |
 | `MAX_RESPONSE_LENGTH` | No | 4000 | Maximum response length in characters to prevent memory issues |
 | `HEARTBEAT_INTERVAL_MS` | No | 60000 | Server heartbeat log interval in milliseconds (`0` disables heartbeat logs) |
+| `CALLBACK_HOST` | No | 127.0.0.1 | Bind address for callback server |
+| `CALLBACK_PORT` | No | 8787 | Bind port for callback server |
+| `CALLBACK_AUTH_TOKEN` | No | - | Optional bearer/token guard for callback endpoint |
+| `CALLBACK_MAX_BODY_BYTES` | No | 65536 | Maximum accepted callback request body size |
 | `AGENT_BRIDGE_HOME` | No | ~/.gemini-bridge | Home directory for Gemini Bridge runtime files |
 | `MEMORY_FILE_PATH` | No | ~/.gemini-bridge/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
 | `MEMORY_MAX_CHARS` | No | 12000 | Max memory-file characters injected into prompt context |
+
+### Local Callback Endpoint
+
+The bridge exposes:
+
+- `POST http://127.0.0.1:8787/callback/telegram`
+- `GET http://127.0.0.1:8787/healthz`
+
+Request body:
+
+```json
+{
+  "text": "Nightly job finished successfully"
+}
+```
+
+- `chatId` is optional. If omitted, the bridge sends to a persisted chat binding learned from inbound Telegram messages.
+- To bind once, send any message to the bot from your target chat.
+- If `CALLBACK_AUTH_TOKEN` is set, send either `x-callback-token: <token>` or `Authorization: Bearer <token>`.
+
+Cron-friendly example:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8787/callback/telegram" \
+  -H "Content-Type: application/json" \
+  -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
+  -d '{"text":"Backup completed at 03:00"}'
+```
 
 ### Persistent Memory File
 
@@ -204,7 +237,7 @@ pm2 save
 
 Use both timeouts together for reliability:
 
-- `GEMINI_TIMEOUT_MS`: hard cap for total request time (recommended: `300000`)
+- `GEMINI_TIMEOUT_MS`: hard cap for total request time (recommended: `900000`)
 - `GEMINI_NO_OUTPUT_TIMEOUT_MS`: fail fast if output stalls (recommended: `60000`)
 - Set `GEMINI_NO_OUTPUT_TIMEOUT_MS=0` to disable idle timeout
 

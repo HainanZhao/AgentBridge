@@ -3,8 +3,12 @@
   "typingIntervalMs": 4000,
   "geminiCommand": "gemini",
   "acpPermissionStrategy": "allow_once",
-  "geminiTimeoutMs": 120000,
+  "geminiTimeoutMs": 900000,
   "geminiNoOutputTimeoutMs": 60000,
   "maxResponseLength": 4000,
-  "heartbeatIntervalMs": 60000
+  "heartbeatIntervalMs": 60000,
+  "callbackHost": "127.0.0.1",
+  "callbackPort": 8787,
+  "callbackAuthToken": "",
+  "callbackMaxBodyBytes": 65536
 }
