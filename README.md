@@ -26,21 +26,21 @@ If you have tried heavier all-in-one agent frameworks, Clawless is the minimal a
 
 ## Interface Adapters
 
-- **Current adapter**: Telegram
-- **Planned direction**: add more interfaces without changing core agent orchestration
-- **Design goal**: keep one message context contract so new interfaces reuse queueing, callbacks, scheduler, and ACP flow
+- **Current adapters**: Telegram, WhatsApp, Slack
+- **Platform selection**: Choose your preferred messaging platform via configuration
+- **Design goal**: keep one message context contract so all interfaces reuse queueing, callbacks, scheduler, and ACP flow
 
 ## Features
 
-- 🔀 **Bring Your Own Agent Runtime**: Keep Telegram/callback/scheduler UX while choosing your preferred local ACP-capable CLI
-- 🔌 **Adapter-Friendly Interface Layer**: Telegram today, additional interfaces planned
-- 🤖 **Telegram (Current Adapter)**: Interact with your local agent runtime through Telegram
-- ⌨️ **Typing Status UX**: Shows Telegram typing indicator while the agent is processing
+- 🔀 **Bring Your Own Agent Runtime**: Keep messaging/callback/scheduler UX while choosing your preferred local ACP-capable CLI
+- 🔌 **Multi-Platform Interface Layer**: Telegram, WhatsApp, and Slack support
+- 🤖 **Multiple Messaging Platforms**: Interact with your local agent runtime through Telegram, WhatsApp, or Slack
+- ⌨️ **Typing Status UX**: Shows typing indicator while the agent is processing (platform-dependent)
 - 🛠️ **Rich Tool Support**: Leverages MCP (Model Context Protocol) servers connected to your local CLI runtime
 - 🔒 **Privacy**: Runs on your hardware, you control data flow
 - 💾 **Persistent Context**: Maintains local session unlike standard API calls
 - 📬 **Sequential Queueing**: Processes one message at a time to avoid overlap and races
-- 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads directly to Telegram
+- 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads to your messaging platform
 - ⏰ **Cron Scheduler**: Schedule tasks to run at specific times or on recurring basis via REST API
 
 ## Architecture
@@ -48,12 +48,13 @@ If you have tried heavier all-in-one agent frameworks, Clawless is the minimal a
 ```
 ┌──────────────────────┐     ┌────────────────┐     ┌──────────────────────────┐
 │ Interface Adapter    │◄───►│   Clawless     │◄───►│ Local Agent.             │
-│ (Telegram now)       │     │   (Node.js)    │ ACP │ e.g. Gemini CLI (default)│
+│ (Telegram/WhatsApp/  │     │   (Node.js)    │ ACP │ e.g. Gemini CLI (default)│
+│  Slack)              │     │                │     │                          │
 └──────────────────────┘     └────────────────┘     └──────────────────────────┘
 ```
 
 The bridge:
-1. Receives messages from the active interface adapter (Telegram today)
+1. Receives messages from the active interface adapter (Telegram, WhatsApp, or Slack)
 2. Forwards them to **your configured local agent CLI** via ACP (Agent Communication Protocol)
 3. Sends interface-appropriate progress/status updates, then returns a single final response
 
@@ -61,7 +62,10 @@ The bridge:
 
 - **Node.js** 18.0.0 or higher
 - **A local ACP-capable agent CLI** installed and configured (Gemini CLI is the default setup)
-- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather) for the current Telegram adapter
+- **Platform credentials** (choose one):
+  - **Telegram**: Bot Token from [@BotFather](https://t.me/BotFather)
+  - **WhatsApp**: WhatsApp account for web.whatsapp.com authentication
+  - **Slack**: Bot Token, Signing Secret, and optionally App Token from [api.slack.com/apps](https://api.slack.com/apps)
 
 ## Installation
 
@@ -189,6 +193,8 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 Built with:
 - [Telegraf](https://telegraf.js.org/) - Telegram Bot framework
+- [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js) - WhatsApp Web API
+- [@slack/bolt](https://slack.dev/bolt-js/) - Slack Bot framework
 - [@agentclientprotocol/sdk](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Agent Communication Protocol SDK
 
 ## Support

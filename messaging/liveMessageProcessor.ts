@@ -29,7 +29,7 @@ export async function processSingleTelegramMessage({
   });
 
   const stopTypingIndicator = messageContext.startTyping();
-  let liveMessageId: number | undefined;
+  let liveMessageId: string | number | undefined;
   let previewBuffer = '';
   let flushTimer: NodeJS.Timeout | null = null;
   let lastFlushAt = 0;

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { TelegramMessagingClient } from './messaging/telegramClient.js';
+import { SlackMessagingClient } from './messaging/slackClient.js';
 import { CronScheduler } from './scheduler/cronScheduler.js';
 import { createScheduledJobHandler } from './scheduler/scheduledJobHandler.js';
 import { processSingleTelegramMessage } from './messaging/liveMessageProcessor.js';
@@ -30,15 +31,39 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-// Validate required environment variables
-if (!process.env.TELEGRAM_TOKEN) {
-  console.error('Error: TELEGRAM_TOKEN environment variable is required');
+const MESSAGING_PLATFORM = (process.env.MESSAGING_PLATFORM || 'telegram').trim().toLowerCase();
+const SUPPORTED_PLATFORMS = new Set(['telegram', 'slack']);
+
+if (!SUPPORTED_PLATFORMS.has(MESSAGING_PLATFORM)) {
+  console.error(`Error: Unknown MESSAGING_PLATFORM: ${MESSAGING_PLATFORM}. Use 'telegram' or 'slack'.`);
   process.exit(1);
 }
 
-if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !process.env.TELEGRAM_TOKEN.includes(':')) {
-  console.error('Error: TELEGRAM_TOKEN looks invalid. Set a real token from @BotFather in your config/env.');
-  process.exit(1);
+if (MESSAGING_PLATFORM === 'telegram') {
+  if (!process.env.TELEGRAM_TOKEN) {
+    console.error('Error: TELEGRAM_TOKEN environment variable is required for Telegram');
+    process.exit(1);
+  }
+
+  if (
+    process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') ||
+    !process.env.TELEGRAM_TOKEN.includes(':')
+  ) {
+    console.error('Error: TELEGRAM_TOKEN looks invalid. Set a real token from @BotFather in your config/env.');
+    process.exit(1);
+  }
+}
+
+if (MESSAGING_PLATFORM === 'slack') {
+  if (!process.env.SLACK_BOT_TOKEN) {
+    console.error('Error: SLACK_BOT_TOKEN environment variable is required for Slack');
+    process.exit(1);
+  }
+
+  if (!process.env.SLACK_SIGNING_SECRET) {
+    console.error('Error: SLACK_SIGNING_SECRET environment variable is required for Slack');
+    process.exit(1);
+  }
 }
 
 const GEMINI_COMMAND = process.env.GEMINI_COMMAND || 'gemini';
@@ -62,21 +87,37 @@ const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || '8788', 10);
 const CALLBACK_AUTH_TOKEN = process.env.CALLBACK_AUTH_TOKEN || '';
 const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || '65536', 10);
 
-// Typing indicator refresh interval (Telegram typing state expires quickly)
+// Typing indicator refresh interval (platform typing state expires quickly)
 const TYPING_INTERVAL_MS = parseInt(process.env.TYPING_INTERVAL_MS || '4000', 10);
 const TELEGRAM_STREAM_UPDATE_INTERVAL_MS = 1000;
 const MESSAGE_GAP_THRESHOLD_MS = 5000; // Start a new message if gap between chunks > 5s
 
-// Maximum response length to prevent memory issues (Telegram has 4096 char limit anyway)
+// Maximum response length to prevent memory issues
 const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 10);
 
 const TELEGRAM_WHITELIST: string[] = parseWhitelistFromEnv(process.env.TELEGRAM_WHITELIST || '');
 
-const messagingClient = new TelegramMessagingClient({
-  token: process.env.TELEGRAM_TOKEN,
-  typingIntervalMs: TYPING_INTERVAL_MS,
-  maxMessageLength: MAX_RESPONSE_LENGTH,
-});
+type MessagingClient = TelegramMessagingClient | SlackMessagingClient;
+
+let messagingClient: MessagingClient;
+
+if (MESSAGING_PLATFORM === 'telegram') {
+  messagingClient = new TelegramMessagingClient({
+    token: process.env.TELEGRAM_TOKEN || '',
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    maxMessageLength: MAX_RESPONSE_LENGTH,
+  });
+} else {
+  messagingClient = new SlackMessagingClient({
+    token: process.env.SLACK_BOT_TOKEN || '',
+    signingSecret: process.env.SLACK_SIGNING_SECRET || '',
+    appToken: process.env.SLACK_APP_TOKEN,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    maxMessageLength: MAX_RESPONSE_LENGTH,
+  });
+}
+
+const enforceWhitelist = MESSAGING_PLATFORM === 'telegram';
 
 let lastIncomingChatId: string | null = null;
 const GEMINI_STDERR_TAIL_MAX = 4000;
@@ -126,6 +167,7 @@ const { startCallbackServer, stopCallbackServer } = createCallbackServer({
   callbackMaxBodyBytes: CALLBACK_MAX_BODY_BYTES,
   cronScheduler,
   messagingClient,
+  messagingPlatform: MESSAGING_PLATFORM,
   getLastIncomingChatId: () => lastIncomingChatId,
   logInfo,
 });
@@ -141,6 +183,7 @@ function buildPromptWithMemory(userPrompt: string) {
     callbackChatStateFilePath: CALLBACK_CHAT_STATE_FILE_PATH,
     callbackAuthToken: CALLBACK_AUTH_TOKEN,
     memoryContext,
+    messagingPlatform: MESSAGING_PLATFORM,
   });
 }
 
@@ -217,6 +260,7 @@ const { enqueueMessage, getQueueLength } = createMessageQueueProcessor({
 registerTelegramHandlers({
   messagingClient,
   telegramWhitelist: TELEGRAM_WHITELIST,
+  enforceWhitelist,
   hasActiveAcpPrompt,
   cancelActiveAcpPrompt,
   enqueueMessage,
@@ -236,7 +280,7 @@ registerTelegramHandlers({
 setupGracefulShutdown();
 
 // Launch the bot
-logInfo('Starting Clawless server...');
+logInfo('Starting Clawless server...', { messagingPlatform: MESSAGING_PLATFORM });
 validateGeminiCommandOrExit();
 ensureBridgeHomeDirectory(AGENT_BRIDGE_HOME);
 ensureMemoryFile(MEMORY_FILE_PATH, logInfo);
@@ -250,6 +294,7 @@ messagingClient
   .launch()
   .then(async () => {
     logInfo('Bot launched successfully', {
+      messagingPlatform: MESSAGING_PLATFORM,
       typingIntervalMs: TYPING_INTERVAL_MS,
       geminiTimeoutMs: GEMINI_TIMEOUT_MS,
       geminiNoOutputTimeoutMs: GEMINI_NO_OUTPUT_TIMEOUT_MS,
@@ -264,11 +309,13 @@ messagingClient
         TELEGRAM_WHITELIST.length > 0 ? `${TELEGRAM_WHITELIST.length} user(s) authorized` : 'NONE (all users blocked)',
     });
 
-    if (TELEGRAM_WHITELIST.length === 0) {
-      console.warn('⚠️  WARNING: Telegram whitelist is empty. All users will be blocked.');
-      console.warn('⚠️  Add usernames to TELEGRAM_WHITELIST config (as a JSON array) to authorize users.');
-    } else {
-      console.log(`✅ Telegram authorization enabled. Authorized usernames: ${TELEGRAM_WHITELIST.join(', ')}`);
+    if (MESSAGING_PLATFORM === 'telegram') {
+      if (TELEGRAM_WHITELIST.length === 0) {
+        console.warn('⚠️  WARNING: Telegram whitelist is empty. All users will be blocked.');
+        console.warn('⚠️  Add usernames to TELEGRAM_WHITELIST config (as a JSON array) to authorize users.');
+      } else {
+        console.log(`✅ Telegram authorization enabled. Authorized usernames: ${TELEGRAM_WHITELIST.join(', ')}`);
+      }
     }
 
     acpRuntime.scheduleAcpPrewarm('post-launch');
@@ -285,7 +332,7 @@ messagingClient
     }
   })
   .catch((error: any) => {
-    if (error?.response?.error_code === 404 && error?.on?.method === 'getMe') {
+    if (MESSAGING_PLATFORM === 'telegram' && error?.response?.error_code === 404 && error?.on?.method === 'getMe') {
       console.error('Failed to launch bot: Telegram token is invalid (getMe returned 404 Not Found).');
       console.error('Update TELEGRAM_TOKEN in ~/.clawless/config.json or env and restart.');
       process.exit(1);

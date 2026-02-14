@@ -1,6 +1,10 @@
 {
+  "messagingPlatform": "telegram",
   "telegramToken": "your_telegram_bot_token_here",
   "telegramWhitelist": [],
+  "slackBotToken": "",
+  "slackSigningSecret": "",
+  "slackAppToken": "",
   "typingIntervalMs": 4000,
   "geminiCommand": "gemini",
   "geminiApprovalMode": "yolo",

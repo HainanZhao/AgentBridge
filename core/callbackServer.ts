@@ -12,6 +12,7 @@ type CreateCallbackServerParams = {
   callbackPort: number;
   callbackAuthToken: string;
   callbackMaxBodyBytes: number;
+  messagingPlatform: string;
   cronScheduler: any;
   messagingClient: any;
   getLastIncomingChatId: () => string | null;
@@ -23,12 +24,14 @@ export function createCallbackServer({
   callbackPort,
   callbackAuthToken,
   callbackMaxBodyBytes,
+  messagingPlatform,
   cronScheduler,
   messagingClient,
   getLastIncomingChatId,
   logInfo,
 }: CreateCallbackServerParams) {
   let callbackServer: http.Server | null = null;
+  const platformCallbackPath = `/callback/${messagingPlatform}`;
 
   const handleCallbackRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const hostHeader = req.headers.host || `${callbackHost}:${callbackPort}`;
@@ -49,7 +52,12 @@ export function createCallbackServer({
       return;
     }
 
-    if (requestUrl.pathname !== '/callback/telegram') {
+    const isCallbackEndpoint =
+      requestUrl.pathname === '/callback' ||
+      requestUrl.pathname === '/callback/telegram' ||
+      requestUrl.pathname === platformCallbackPath;
+
+    if (!isCallbackEndpoint) {
       sendJson(res, 404, { ok: false, error: 'Not found' });
       return;
     }
@@ -86,18 +94,17 @@ export function createCallbackServer({
     if (!targetChatId) {
       sendJson(res, 400, {
         ok: false,
-        error:
-          'No chat id available. Send one Telegram message to the bot once to bind a target chat, or provide `chatId` in this callback request.',
+        error: `No chat id available. Send one ${messagingPlatform} message to the bot once to bind a target chat, or provide \`chatId\` in this callback request.`,
       });
       return;
     }
 
     try {
       await messagingClient.sendTextToChat(targetChatId, callbackText);
-      logInfo('Callback message sent', { targetChatId });
+      logInfo('Callback message sent', { targetChatId, messagingPlatform });
       sendJson(res, 200, { ok: true, chatId: targetChatId });
     } catch (error: any) {
-      sendJson(res, 500, { ok: false, error: getErrorMessage(error, 'Failed to send Telegram message') });
+      sendJson(res, 500, { ok: false, error: getErrorMessage(error, `Failed to send ${messagingPlatform} message`) });
     }
   };
 
@@ -131,7 +138,7 @@ export function createCallbackServer({
         host: callbackHost,
         port: callbackPort,
         authEnabled: Boolean(callbackAuthToken),
-        endpoint: '/callback/telegram',
+        endpoints: ['/callback', '/callback/telegram', platformCallbackPath],
       });
     });
   };

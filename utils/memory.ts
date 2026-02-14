@@ -47,6 +47,7 @@ export function buildPromptWithMemory(params: {
   callbackChatStateFilePath: string;
   callbackAuthToken: string;
   memoryContext: string;
+  messagingPlatform: string;
 }) {
   const {
     userPrompt,
@@ -56,9 +57,10 @@ export function buildPromptWithMemory(params: {
     callbackChatStateFilePath,
     callbackAuthToken,
     memoryContext,
+    messagingPlatform,
   } = params;
 
-  const callbackEndpoint = `http://${callbackHost}:${callbackPort}/callback/telegram`;
+  const callbackEndpoint = `http://${callbackHost}:${callbackPort}/callback/${messagingPlatform}`;
   const scheduleEndpoint = `http://${callbackHost}:${callbackPort}/api/schedule`;
 
   return [
@@ -70,7 +72,7 @@ export function buildPromptWithMemory(params: {
     '- Callback payload should include a JSON `text` field; `chatId` is optional.',
     `- Persisted callback chat binding file: ${callbackChatStateFilePath}`,
     '- If no `chatId` is provided, the bridge sends to the persisted bound chat.',
-    '- For scheduled jobs, include callback delivery steps so results are pushed to Telegram when jobs complete.',
+    `- For scheduled jobs, include callback delivery steps so results are pushed to ${messagingPlatform} when jobs complete.`,
     '',
     '**Scheduler API:**',
     `- Create schedule: POST ${scheduleEndpoint}`,
@@ -83,7 +85,7 @@ export function buildPromptWithMemory(params: {
     `- Get schedule: GET ${scheduleEndpoint}/:id`,
     `- Delete schedule: DELETE ${scheduleEndpoint}/:id`,
     '- Never edit scheduler persistence files directly; always mutate schedules through the Scheduler API.',
-    '- When schedule runs, it executes the message through Gemini CLI and sends results to Telegram.',
+    `- When schedule runs, it executes the message through Gemini CLI and sends results to ${messagingPlatform}.`,
     '- Use this API when user asks to schedule tasks, set reminders, or create recurring jobs.',
     callbackAuthToken
       ? '- Scheduler auth is enabled: include `x-callback-token` (or bearer token) header when creating requests.'
