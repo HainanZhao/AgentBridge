@@ -1205,7 +1205,7 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
       const gapSinceLastChunk = lastChunkAt > 0 ? now - lastChunkAt : 0;
 
       // If gap is more than 5 seconds, finalize current message and start a new one
-      if (gapSinceLastChunk > MESSAGE_GAP_THRESHOLD_MS && liveMessageId && previewBuffer) {
+      if (gapSinceLastChunk > MESSAGE_GAP_THRESHOLD_MS && liveMessageId && previewBuffer.trim()) {
         await finalizeCurrentMessage();
       }
 
