@@ -55,6 +55,59 @@ const TELEGRAM_STREAM_UPDATE_INTERVAL_MS = 1000;
 // Maximum response length to prevent memory issues (Telegram has 4096 char limit anyway)
 const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 10);
 
+// Parse Telegram whitelist from environment variable
+// Expected format: comma-separated list of user IDs or stringified JSON array
+const TELEGRAM_WHITELIST: number[] = (() => {
+  const whitelistEnv = process.env.TELEGRAM_WHITELIST || '';
+  if (!whitelistEnv || whitelistEnv.trim() === '') {
+    return [];
+  }
+  
+  // Try parsing as JSON first
+  try {
+    const parsed = JSON.parse(whitelistEnv);
+    if (Array.isArray(parsed)) {
+      return parsed.map((id) => {
+        const numId = typeof id === 'number' ? id : parseInt(String(id), 10);
+        if (isNaN(numId)) {
+          console.warn(`Warning: Invalid Telegram user ID in whitelist: ${id}`);
+          return null;
+        }
+        return numId;
+      }).filter((id): id is number => id !== null);
+    }
+  } catch {
+    // Not JSON, try comma-separated
+  }
+  
+  // Parse as comma-separated list
+  return whitelistEnv.split(',')
+    .map((id) => {
+      const trimmed = id.trim();
+      const numId = parseInt(trimmed, 10);
+      if (isNaN(numId)) {
+        console.warn(`Warning: Invalid Telegram user ID in whitelist: ${trimmed}`);
+        return null;
+      }
+      return numId;
+    })
+    .filter((id): id is number => id !== null);
+})();
+
+function isUserAuthorized(userId: number | undefined): boolean {
+  // If whitelist is empty, block all users by default (safe default)
+  if (TELEGRAM_WHITELIST.length === 0) {
+    return false;
+  }
+  
+  // Check if user ID is in whitelist
+  if (userId === undefined) {
+    return false;
+  }
+  
+  return TELEGRAM_WHITELIST.includes(userId);
+}
+
 const messagingClient = new TelegramMessagingClient({
   token: process.env.TELEGRAM_TOKEN,
   typingIntervalMs: TYPING_INTERVAL_MS,
@@ -1182,6 +1235,14 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
  * Handles incoming text messages from Telegram
  */
 messagingClient.onTextMessage(async (messageContext) => {
+  // Check if user is authorized
+  if (!isUserAuthorized(messageContext.userId)) {
+    const userName = messageContext.userId ? `User ${messageContext.userId}` : 'Unknown user';
+    console.warn(`Unauthorized access attempt from ${userName}`);
+    await messageContext.sendText('🚫 Unauthorized. This bot is restricted to authorized users only.');
+    return;
+  }
+
   if (messageContext.chatId !== undefined && messageContext.chatId !== null) {
     lastIncomingChatId = String(messageContext.chatId);
     persistCallbackChatId(lastIncomingChatId);
@@ -1246,7 +1307,15 @@ messagingClient.launch()
       callbackPort: CALLBACK_PORT,
       mcpSkillsSource: 'local Gemini CLI defaults (no MCP override)',
       acpMode: `${GEMINI_COMMAND} --experimental-acp`,
+      telegramWhitelist: TELEGRAM_WHITELIST.length > 0 ? `${TELEGRAM_WHITELIST.length} user(s) authorized` : 'NONE (all users blocked)',
     });
+
+    if (TELEGRAM_WHITELIST.length === 0) {
+      console.warn('⚠️  WARNING: Telegram whitelist is empty. All users will be blocked.');
+      console.warn('⚠️  Add user IDs to TELEGRAM_WHITELIST config to authorize users.');
+    } else {
+      console.log(`✅ Telegram authorization enabled. Authorized users: ${TELEGRAM_WHITELIST.join(', ')}`);
+    }
 
     scheduleAcpPrewarm('post-launch');
 
