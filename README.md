@@ -26,21 +26,21 @@ If you have tried heavier all-in-one agent frameworks, Clawless is the minimal a
 
 ## Interface Adapters
 
-- **Current adapter**: Telegram
-- **Planned direction**: add more interfaces without changing core agent orchestration
-- **Design goal**: keep one message context contract so new interfaces reuse queueing, callbacks, scheduler, and ACP flow
+- **Current adapters**: Telegram, WhatsApp, Slack
+- **Platform selection**: Choose your preferred messaging platform via configuration
+- **Design goal**: keep one message context contract so all interfaces reuse queueing, callbacks, scheduler, and ACP flow
 
 ## Features
 
-- 🔀 **Bring Your Own Agent Runtime**: Keep Telegram/callback/scheduler UX while choosing your preferred local ACP-capable CLI
-- 🔌 **Adapter-Friendly Interface Layer**: Telegram today, additional interfaces planned
-- 🤖 **Telegram (Current Adapter)**: Interact with your local agent runtime through Telegram
-- ⌨️ **Typing Status UX**: Shows Telegram typing indicator while the agent is processing
+- 🔀 **Bring Your Own Agent Runtime**: Keep messaging/callback/scheduler UX while choosing your preferred local ACP-capable CLI
+- 🔌 **Multi-Platform Interface Layer**: Telegram, WhatsApp, and Slack support
+- 🤖 **Multiple Messaging Platforms**: Interact with your local agent runtime through Telegram, WhatsApp, or Slack
+- ⌨️ **Typing Status UX**: Shows typing indicator while the agent is processing (platform-dependent)
 - 🛠️ **Rich Tool Support**: Leverages MCP (Model Context Protocol) servers connected to your local CLI runtime
 - 🔒 **Privacy**: Runs on your hardware, you control data flow
 - 💾 **Persistent Context**: Maintains local session unlike standard API calls
 - 📬 **Sequential Queueing**: Processes one message at a time to avoid overlap and races
-- 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads directly to Telegram
+- 🔔 **Local Callback Endpoint**: Accepts localhost HTTP POST requests and forwards payloads to your messaging platform
 - ⏰ **Cron Scheduler**: Schedule tasks to run at specific times or on recurring basis via REST API
 
 ## Architecture
@@ -48,12 +48,13 @@ If you have tried heavier all-in-one agent frameworks, Clawless is the minimal a
 ```
 ┌──────────────────────┐     ┌────────────────┐     ┌──────────────────────────┐
 │ Interface Adapter    │◄───►│   Clawless     │◄───►│ Local Agent.             │
-│ (Telegram now)       │     │   (Node.js)    │ ACP │ e.g. Gemini CLI (default)│
+│ (Telegram/WhatsApp/  │     │   (Node.js)    │ ACP │ e.g. Gemini CLI (default)│
+│  Slack)              │     │                │     │                          │
 └──────────────────────┘     └────────────────┘     └──────────────────────────┘
 ```
 
 The bridge:
-1. Receives messages from the active interface adapter (Telegram today)
+1. Receives messages from the active interface adapter (Telegram, WhatsApp, or Slack)
 2. Forwards them to **your configured local agent CLI** via ACP (Agent Communication Protocol)
 3. Sends interface-appropriate progress/status updates, then returns a single final response
 
@@ -61,7 +62,10 @@ The bridge:
 
 - **Node.js** 18.0.0 or higher
 - **A local ACP-capable agent CLI** installed and configured (Gemini CLI is the default setup)
-- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather) for the current Telegram adapter
+- **Platform credentials** (choose one):
+  - **Telegram**: Bot Token from [@BotFather](https://t.me/BotFather)
+  - **WhatsApp**: WhatsApp account for web.whatsapp.com authentication
+  - **Slack**: Bot Token, Signing Secret, and optionally App Token from [api.slack.com/apps](https://api.slack.com/apps)
 
 ## Installation
 
@@ -75,23 +79,78 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and add your Telegram bot token:
+Edit `.env` and configure your chosen messaging platform. See platform-specific setup sections below.
+
+### Platform Setup
+
+Choose one of the following platforms:
+
+#### Telegram Setup
+
+1. Get a bot token from [@BotFather](https://t.me/BotFather):
+   - Open Telegram and search for @BotFather
+   - Send `/newbot` command
+   - Follow the prompts to create your bot
+   - Copy the token provided by BotFather
+
+2. Configure in `.env`:
 ```env
+MESSAGING_PLATFORM=telegram
 TELEGRAM_TOKEN=your_bot_token_here
+```
+
+#### WhatsApp Setup
+
+1. WhatsApp uses web.whatsapp.com authentication (no token needed)
+
+2. Configure in `.env`:
+```env
+MESSAGING_PLATFORM=whatsapp
+```
+
+3. On first run, scan the QR code with your WhatsApp mobile app to authenticate
+
+**Note**: WhatsApp requires a display for QR code scanning on first run. The session is saved for subsequent runs.
+
+#### Slack Setup
+
+1. Create a Slack App at [api.slack.com/apps](https://api.slack.com/apps):
+   - Click "Create New App" → "From scratch"
+   - Name your app and select your workspace
+   - Go to "OAuth & Permissions" and add these Bot Token Scopes:
+     - `chat:write` - Send messages
+     - `app_mentions:read` - Receive mentions
+     - `channels:history` - Read channel messages
+     - `groups:history` - Read private channel messages
+     - `im:history` - Read direct messages
+     - `mpim:history` - Read group messages
+   - Install the app to your workspace
+   - Copy the "Bot User OAuth Token"
+   - Go to "Basic Information" and copy the "Signing Secret"
+   - (Optional) For Socket Mode: Enable Socket Mode and copy the App-Level Token
+
+2. Configure in `.env`:
+```env
+MESSAGING_PLATFORM=slack
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_SIGNING_SECRET=your-signing-secret-here
+# Optional: for Socket Mode (recommended for local development)
+SLACK_APP_TOKEN=xapp-your-app-token-here
+```
+
+3. Invite your bot to channels where you want to use it:
+   - In Slack, type `/invite @YourBotName` in any channel
+
+### Common Configuration
+
+Add these settings to your `.env` file (optional):
+```env
 TYPING_INTERVAL_MS=4000
 GEMINI_TIMEOUT_MS=900000
 GEMINI_NO_OUTPUT_TIMEOUT_MS=60000
 ACP_STREAM_STDOUT=false
 ACP_DEBUG_STREAM=false
 ```
-
-## Getting a Telegram Bot Token
-
-1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` command
-3. Follow the prompts to create your bot
-4. Copy the token provided by BotFather
-5. Paste it into your `.env` file
 
 ## Usage
 
@@ -209,8 +268,12 @@ pm2 save
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TELEGRAM_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
-| `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing Telegram typing status |
+| `MESSAGING_PLATFORM` | No | telegram | Messaging platform to use: `telegram`, `whatsapp`, or `slack` |
+| `TELEGRAM_TOKEN` | Yes (for Telegram) | - | Your Telegram bot token from BotFather |
+| `SLACK_BOT_TOKEN` | Yes (for Slack) | - | Your Slack bot token from api.slack.com/apps |
+| `SLACK_SIGNING_SECRET` | Yes (for Slack) | - | Your Slack signing secret from api.slack.com/apps |
+| `SLACK_APP_TOKEN` | No (for Slack) | - | Your Slack app token for Socket Mode (optional) |
+| `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing typing status |
 | `GEMINI_TIMEOUT_MS` | No | 900000 | Overall timeout for a single Gemini CLI run |
 | `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 60000 | Idle timeout; aborts if Gemini emits no output for this duration |
 | `GEMINI_KILL_GRACE_MS` | No | 5000 | Grace period after SIGTERM before escalating Gemini child process shutdown to SIGKILL |
@@ -234,7 +297,10 @@ pm2 save
 
 The bridge exposes:
 
+- `POST http://127.0.0.1:8788/callback` - Send messages to the configured platform (generic endpoint)
 - `POST http://127.0.0.1:8788/callback/telegram` - Send messages to Telegram
+- `POST http://127.0.0.1:8788/callback/whatsapp` - Send messages to WhatsApp
+- `POST http://127.0.0.1:8788/callback/slack` - Send messages to Slack
 - `GET http://127.0.0.1:8788/healthz` - Health check
 - `POST/GET/DELETE http://127.0.0.1:8788/api/schedule`, `GET http://127.0.0.1:8788/api/schedule/:id` - Scheduler API
 
@@ -246,13 +312,20 @@ Request body for callback:
 }
 ```
 
-- `chatId` is optional. If omitted, the bridge sends to a persisted chat binding learned from inbound Telegram messages.
+- `chatId` is optional. If omitted, the bridge sends to a persisted chat binding learned from inbound messages.
 - To bind once, send any message to the bot from your target chat.
 - If `CALLBACK_AUTH_TOKEN` is set, send either `x-callback-token: <token>` or `Authorization: Bearer <token>`.
 
-Cron-friendly example:
+Cron-friendly examples:
 
 ```bash
+# Generic endpoint (uses configured platform)
+curl -sS -X POST "http://127.0.0.1:8788/callback" \
+  -H "Content-Type: application/json" \
+  -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
+  -d '{"text":"Backup completed at 03:00"}'
+
+# Platform-specific endpoint
 curl -sS -X POST "http://127.0.0.1:8788/callback/telegram" \
   -H "Content-Type: application/json" \
   -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
@@ -374,8 +447,9 @@ If you see "429 Too Many Requests" errors:
 ### Connection issues
 
 1. Verify your internet connection
-2. Check if Telegram API is accessible
-3. Ensure `TELEGRAM_TOKEN` is correct in `.env`
+2. For Telegram: Check if Telegram API is accessible and ensure `TELEGRAM_TOKEN` is correct
+3. For Slack: Verify your bot tokens and signing secret are correct
+4. For WhatsApp: Ensure you've scanned the QR code to authenticate
 
 ## Development
 
@@ -387,7 +461,9 @@ Clawless/
 ├── bin/
 │   └── cli.ts                      # CLI entrypoint
 ├── messaging/
-│   └── telegramClient.ts           # Telegram adapter
+│   ├── telegramClient.ts           # Telegram adapter
+│   ├── whatsappClient.ts           # WhatsApp adapter
+│   └── slackClient.ts              # Slack adapter
 ├── scheduler/
 │   ├── cronScheduler.ts            # Schedule persistence + cron orchestration
 │   └── scheduledJobHandler.ts      # Scheduled run execution logic
@@ -404,16 +480,19 @@ Clawless/
 
 The codebase is designed to be simple and extensible:
 - Core queue + ACP logic is in `index.ts`
-- Interface-specific messaging logic lives in `messaging/telegramClient.ts`
-- New bot platforms can implement the same message context shape (`text`, `startTyping()`, `sendText()`)
+- Interface-specific messaging logic lives in `messaging/` directory:
+  - `telegramClient.ts` for Telegram
+  - `whatsappClient.ts` for WhatsApp
+  - `slackClient.ts` for Slack
+- New platforms can implement the same message context interface (`text`, `startTyping()`, `sendText()`, etc.)
 - Error handling is centralized
 - Rate limiting logic is configurable
 
 ## Security Considerations
 
-- **Never commit** `.env` file with your token (it's in `.gitignore`)
+- **Never commit** `.env` file with your tokens (it's in `.gitignore`)
 - **Rotate tokens** if accidentally exposed
-- **Limit bot access** using Telegram's bot settings
+- **Limit bot access** using platform-specific security settings
 - **Monitor logs** for unusual activity
 
 ## Contributing
@@ -432,6 +511,8 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 Built with:
 - [Telegraf](https://telegraf.js.org/) - Telegram Bot framework
+- [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js) - WhatsApp Web API
+- [@slack/bolt](https://slack.dev/bolt-js/) - Slack Bot framework
 - [@agentclientprotocol/sdk](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Agent Communication Protocol SDK
 
 ## Support

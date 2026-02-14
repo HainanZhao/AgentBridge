@@ -6,24 +6,46 @@ import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import { TelegramMessagingClient } from './messaging/telegramClient.js';
+import { WhatsAppMessagingClient } from './messaging/whatsappClient.js';
+import { SlackMessagingClient } from './messaging/slackClient.js';
 import { CronScheduler, ScheduleConfig } from './scheduler/cronScheduler.js';
 import { createScheduledJobHandler } from './scheduler/scheduledJobHandler.js';
 import { runPromptWithTempAcp } from './acp/tempAcpRunner.js';
 import { buildPermissionResponse, noOpAcpFileOperation } from './acp/clientHelpers.js';
 import { getErrorMessage } from './utils/error.js';
 import dotenv from 'dotenv';
+import qrcode from 'qrcode-terminal';
 
 // Load environment variables
 dotenv.config();
 
-// Validate required environment variables
-if (!process.env.TELEGRAM_TOKEN) {
-  console.error('Error: TELEGRAM_TOKEN environment variable is required');
-  process.exit(1);
-}
+// Get messaging platform from environment (default to telegram for backward compatibility)
+const MESSAGING_PLATFORM = (process.env.MESSAGING_PLATFORM || 'telegram').toLowerCase();
 
-if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !process.env.TELEGRAM_TOKEN.includes(':')) {
-  console.error('Error: TELEGRAM_TOKEN looks invalid. Set a real token from @BotFather in your config/env.');
+// Validate required environment variables based on platform
+if (MESSAGING_PLATFORM === 'telegram') {
+  if (!process.env.TELEGRAM_TOKEN) {
+    console.error('Error: TELEGRAM_TOKEN environment variable is required for Telegram');
+    process.exit(1);
+  }
+
+  if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !process.env.TELEGRAM_TOKEN.includes(':')) {
+    console.error('Error: TELEGRAM_TOKEN looks invalid. Set a real token from @BotFather in your config/env.');
+    process.exit(1);
+  }
+} else if (MESSAGING_PLATFORM === 'slack') {
+  if (!process.env.SLACK_BOT_TOKEN) {
+    console.error('Error: SLACK_BOT_TOKEN environment variable is required for Slack');
+    process.exit(1);
+  }
+  if (!process.env.SLACK_SIGNING_SECRET) {
+    console.error('Error: SLACK_SIGNING_SECRET environment variable is required for Slack');
+    process.exit(1);
+  }
+} else if (MESSAGING_PLATFORM === 'whatsapp') {
+  console.log('WhatsApp platform selected. You will need to scan a QR code on first run.');
+} else {
+  console.error(`Error: Unknown MESSAGING_PLATFORM: ${MESSAGING_PLATFORM}. Use 'telegram', 'whatsapp', or 'slack'.`);
   process.exit(1);
 }
 
@@ -48,18 +70,48 @@ const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || '8788', 10);
 const CALLBACK_AUTH_TOKEN = process.env.CALLBACK_AUTH_TOKEN || '';
 const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || '65536', 10);
 
-// Typing indicator refresh interval (Telegram typing state expires quickly)
+// Typing indicator refresh interval (messaging platform typing state expires quickly)
 const TYPING_INTERVAL_MS = parseInt(process.env.TYPING_INTERVAL_MS || '4000', 10);
 const TELEGRAM_STREAM_UPDATE_INTERVAL_MS = 1000;
 
 // Maximum response length to prevent memory issues (Telegram has 4096 char limit anyway)
 const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 10);
 
-const messagingClient = new TelegramMessagingClient({
-  token: process.env.TELEGRAM_TOKEN,
-  typingIntervalMs: TYPING_INTERVAL_MS,
-  maxMessageLength: MAX_RESPONSE_LENGTH,
-});
+// Create appropriate messaging client based on platform
+type MessagingClient = TelegramMessagingClient | WhatsAppMessagingClient | SlackMessagingClient;
+
+function displayWhatsAppQRCode(qr: string): void {
+  console.log('\n=== WhatsApp QR Code ===');
+  console.log('Scan this QR code with your WhatsApp mobile app:');
+  qrcode.generate(qr, { small: true });
+  console.log('========================\n');
+}
+
+let messagingClient: MessagingClient;
+
+if (MESSAGING_PLATFORM === 'telegram') {
+  messagingClient = new TelegramMessagingClient({
+    token: process.env.TELEGRAM_TOKEN!,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    maxMessageLength: MAX_RESPONSE_LENGTH,
+  });
+} else if (MESSAGING_PLATFORM === 'whatsapp') {
+  messagingClient = new WhatsAppMessagingClient({
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    maxMessageLength: MAX_RESPONSE_LENGTH,
+    qrCallback: displayWhatsAppQRCode,
+  });
+} else if (MESSAGING_PLATFORM === 'slack') {
+  messagingClient = new SlackMessagingClient({
+    token: process.env.SLACK_BOT_TOKEN!,
+    signingSecret: process.env.SLACK_SIGNING_SECRET!,
+    appToken: process.env.SLACK_APP_TOKEN,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    maxMessageLength: MAX_RESPONSE_LENGTH,
+  });
+} else {
+  throw new Error(`Unsupported messaging platform: ${MESSAGING_PLATFORM}`);
+}
 
 let geminiProcess: any = null;
 let acpConnection: any = null;
@@ -430,8 +482,14 @@ async function handleCallbackRequest(req: http.IncomingMessage, res: http.Server
     return;
   }
 
-  // Original callback/telegram endpoint
-  if (requestUrl.pathname !== '/callback/telegram') {
+  // Callback endpoints - support both platform-specific and generic endpoints
+  const isCallbackEndpoint = 
+    requestUrl.pathname === '/callback/telegram' || 
+    requestUrl.pathname === '/callback/whatsapp' || 
+    requestUrl.pathname === '/callback/slack' ||
+    requestUrl.pathname === '/callback';
+  
+  if (!isCallbackEndpoint) {
     sendJson(res, 404, { ok: false, error: 'Not found' });
     return;
   }
@@ -470,17 +528,17 @@ async function handleCallbackRequest(req: http.IncomingMessage, res: http.Server
   if (!targetChatId) {
     sendJson(res, 400, {
       ok: false,
-      error: 'No chat id available. Send one Telegram message to the bot once to bind a target chat, or provide `chatId` in this callback request.',
+      error: `No chat id available. Send one message to the ${MESSAGING_PLATFORM} bot once to bind a target chat, or provide \`chatId\` in this callback request.`,
     });
     return;
   }
 
   try {
     await messagingClient.sendTextToChat(targetChatId, callbackText);
-    logInfo('Callback message sent', { targetChatId });
+    logInfo('Callback message sent', { targetChatId, platform: MESSAGING_PLATFORM });
     sendJson(res, 200, { ok: true, chatId: targetChatId });
   } catch (error: any) {
-    sendJson(res, 500, { ok: false, error: getErrorMessage(error, 'Failed to send Telegram message') });
+    sendJson(res, 500, { ok: false, error: getErrorMessage(error, `Failed to send ${MESSAGING_PLATFORM} message`) });
   }
 }
 
@@ -514,7 +572,8 @@ function startCallbackServer() {
       host: CALLBACK_HOST,
       port: CALLBACK_PORT,
       authEnabled: Boolean(CALLBACK_AUTH_TOKEN),
-      endpoint: '/callback/telegram',
+      platform: MESSAGING_PLATFORM,
+      endpoints: ['/callback', `/callback/${MESSAGING_PLATFORM}`, '/callback/telegram', '/callback/whatsapp', '/callback/slack'],
     });
   });
 }
@@ -606,7 +665,7 @@ function readMemoryContext() {
 
 function buildPromptWithMemory(userPrompt: string) {
   const memoryContext = readMemoryContext() || '(No saved memory yet)';
-  const callbackEndpoint = `http://${CALLBACK_HOST}:${CALLBACK_PORT}/callback/telegram`;
+  const callbackEndpoint = `http://${CALLBACK_HOST}:${CALLBACK_PORT}/callback/${MESSAGING_PLATFORM}`;
   const scheduleEndpoint = `http://${CALLBACK_HOST}:${CALLBACK_PORT}/api/schedule`;
 
   return [
