@@ -56,57 +56,39 @@ const TELEGRAM_STREAM_UPDATE_INTERVAL_MS = 1000;
 const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 10);
 
 // Parse Telegram whitelist from environment variable
-// Expected format: comma-separated list of user IDs or stringified JSON array
-function parseWhitelistFromEnv(envValue: string): number[] {
+// Expected format: JSON array of usernames (e.g., ["user1", "user2"])
+function parseWhitelistFromEnv(envValue: string): string[] {
   if (!envValue || envValue.trim() === '') {
     return [];
   }
-  
-  // Try parsing as JSON first
+
   try {
     const parsed = JSON.parse(envValue);
     if (Array.isArray(parsed)) {
-      return parsed.map((id) => {
-        const numId = typeof id === 'number' ? id : parseInt(String(id), 10);
-        if (isNaN(numId)) {
-          console.warn(`Warning: Invalid Telegram user ID in whitelist: ${id}`);
-          return null;
-        }
-        return numId;
-      }).filter((id): id is number => id !== null);
+      return parsed.map((name) => String(name).trim().replace(/^@/, '')).filter(Boolean);
     }
   } catch {
-    console.warn('Failed to parse TELEGRAM_WHITELIST as JSON, attempting comma-separated format');
+    console.warn('Warning: TELEGRAM_WHITELIST must be a valid JSON array of usernames (e.g., ["user1", "user2"])');
   }
-  
-  // Parse as comma-separated list
-  return envValue.split(',')
-    .map((id) => {
-      const trimmed = id.trim();
-      const numId = parseInt(trimmed, 10);
-      if (isNaN(numId)) {
-        console.warn(`Warning: Invalid Telegram user ID in whitelist: ${trimmed}`);
-        return null;
-      }
-      return numId;
-    })
-    .filter((id): id is number => id !== null);
+
+  return [];
 }
 
-const TELEGRAM_WHITELIST: number[] = parseWhitelistFromEnv(process.env.TELEGRAM_WHITELIST || '');
+const TELEGRAM_WHITELIST: string[] = parseWhitelistFromEnv(process.env.TELEGRAM_WHITELIST || '');
 
-function isUserAuthorized(userId: number | undefined): boolean {
+function isUserAuthorized(username: string | undefined): boolean {
   // If whitelist is empty, block all users by default (safe default)
   if (TELEGRAM_WHITELIST.length === 0) {
     return false;
   }
-  
-  // Check if user ID is in whitelist
-  if (userId === undefined) {
+
+  if (!username) {
     return false;
   }
-  
-  return TELEGRAM_WHITELIST.includes(userId);
+
+  const normalizedUsername = username.toLowerCase();
+
+  return TELEGRAM_WHITELIST.some(entry => entry.toLowerCase() === normalizedUsername);
 }
 
 const messagingClient = new TelegramMessagingClient({
@@ -131,7 +113,7 @@ const GEMINI_STDERR_TAIL_MAX = 4000;
 function validateGeminiCommandOrExit() {
   const result = spawnSync(GEMINI_COMMAND, ['--version'], {
     stdio: 'ignore',
-    timeout: 5000,
+    timeout: 10000,
     killSignal: 'SIGKILL',
   });
 
@@ -1237,8 +1219,8 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
  */
 messagingClient.onTextMessage(async (messageContext) => {
   // Check if user is authorized
-  if (!isUserAuthorized(messageContext.userId)) {
-    console.warn(`Unauthorized access attempt from user ID: ${messageContext.userId ?? 'unknown'}`);
+  if (!isUserAuthorized(messageContext.username)) {
+    console.warn(`Unauthorized access attempt from username: ${messageContext.username ?? 'none'} (ID: ${messageContext.userId ?? 'unknown'})`);
     await messageContext.sendText('🚫 Unauthorized. This bot is restricted to authorized users only.');
     return;
   }
@@ -1312,9 +1294,9 @@ messagingClient.launch()
 
     if (TELEGRAM_WHITELIST.length === 0) {
       console.warn('⚠️  WARNING: Telegram whitelist is empty. All users will be blocked.');
-      console.warn('⚠️  Add user IDs to TELEGRAM_WHITELIST config to authorize users.');
+      console.warn('⚠️  Add usernames to TELEGRAM_WHITELIST config (as a JSON array) to authorize users.');
     } else {
-      console.log(`✅ Telegram authorization enabled. Authorized users: ${TELEGRAM_WHITELIST.join(', ')}`);
+      console.log(`✅ Telegram authorization enabled. Authorized usernames: ${TELEGRAM_WHITELIST.join(', ')}`);
     }
 
     scheduleAcpPrewarm('post-launch');
