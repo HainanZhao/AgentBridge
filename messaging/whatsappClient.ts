@@ -160,10 +160,10 @@ export class WhatsAppMessagingClient {
     await this.client.initialize();
   }
 
-  async sendTextToChat(chatId: string, text: string) {
+  async sendTextToChat(chatId: string | number, text: string) {
     const chunks = splitTextIntoChunks(text, this.maxMessageLength);
     for (const chunk of chunks) {
-      await this.client.sendMessage(chatId, chunk);
+      await this.client.sendMessage(String(chatId), chunk);
     }
   }
 

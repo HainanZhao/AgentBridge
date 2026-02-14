@@ -1,4 +1,14 @@
-import { App, MessageEvent } from '@slack/bolt';
+import { App } from '@slack/bolt';
+
+interface SlackMessageEvent {
+  type: 'message';
+  channel: string;
+  user?: string;
+  text?: string;
+  ts: string;
+  thread_ts?: string;
+  subtype?: string;
+}
 
 function splitTextIntoChunks(text: string, maxMessageLength: number): string[] {
   const normalizedText = String(text || '');
@@ -23,7 +33,7 @@ function splitTextIntoChunks(text: string, maxMessageLength: number): string[] {
 }
 
 class SlackMessageContext {
-  event: MessageEvent;
+  event: SlackMessageEvent;
   app: App;
   typingIntervalMs: number;
   maxMessageLength: number;
@@ -31,7 +41,7 @@ class SlackMessageContext {
   chatId: string | undefined;
   private typingInterval: NodeJS.Timeout | null = null;
 
-  constructor(event: MessageEvent, app: App, typingIntervalMs: number, maxMessageLength: number) {
+  constructor(event: SlackMessageEvent, app: App, typingIntervalMs: number, maxMessageLength: number) {
     this.event = event;
     this.app = app;
     this.typingIntervalMs = typingIntervalMs;
@@ -156,7 +166,7 @@ export class SlackMessagingClient {
       // Only handle regular messages (not bot messages)
       if (message.subtype === undefined && 'text' in message) {
         const messageContext = new SlackMessageContext(
-          message as MessageEvent, 
+          message as SlackMessageEvent, 
           this.app, 
           this.typingIntervalMs, 
           this.maxMessageLength
@@ -202,11 +212,11 @@ export class SlackMessagingClient {
     console.log('⚡️ Slack app is running!');
   }
 
-  async sendTextToChat(chatId: string, text: string) {
+  async sendTextToChat(chatId: string | number, text: string) {
     const chunks = splitTextIntoChunks(text, this.maxMessageLength);
     for (const chunk of chunks) {
       await this.app.client.chat.postMessage({
-        channel: chatId,
+        channel: String(chatId),
         text: chunk,
       });
     }
