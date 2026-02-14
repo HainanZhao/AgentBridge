@@ -79,8 +79,8 @@ Edit `.env` and add your Telegram bot token:
 ```env
 TELEGRAM_TOKEN=your_bot_token_here
 TYPING_INTERVAL_MS=4000
-GEMINI_TIMEOUT_MS=900000
-GEMINI_NO_OUTPUT_TIMEOUT_MS=60000
+GEMINI_TIMEOUT_MS=1200000
+GEMINI_NO_OUTPUT_TIMEOUT_MS=300000
 ACP_STREAM_STDOUT=false
 ACP_DEBUG_STREAM=false
 ```
@@ -236,8 +236,8 @@ pm2 save
 | `TELEGRAM_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
 | `TELEGRAM_WHITELIST` | No | [] | List of authorized Telegram usernames. **Security:** If empty, all users are blocked by default. Format: JSON array `["username1", "username2"]` |
 | `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing Telegram typing status |
-| `GEMINI_TIMEOUT_MS` | No | 900000 | Overall timeout for a single Gemini CLI run |
-| `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 60000 | Idle timeout; aborts if Gemini emits no output for this duration |
+| `GEMINI_TIMEOUT_MS` | No | 1200000 | Overall timeout for a single Gemini CLI run |
+| `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 300000 | Idle timeout; aborts if Gemini emits no output for this duration |
 | `GEMINI_KILL_GRACE_MS` | No | 5000 | Grace period after SIGTERM before escalating Gemini child process shutdown to SIGKILL |
 | `GEMINI_APPROVAL_MODE` | No | yolo | Gemini approval mode (for example: `default`, `auto_edit`, `yolo`, `plan`) |
 | `GEMINI_MODEL` | No | - | Gemini model override passed to CLI |
@@ -334,8 +334,8 @@ See [SCHEDULER.md](SCHEDULER.md) for complete API documentation.
 
 Use both timeouts together for reliability:
 
-- `GEMINI_TIMEOUT_MS`: hard cap for total request time (recommended: `900000`)
-- `GEMINI_NO_OUTPUT_TIMEOUT_MS`: fail fast if output stalls (recommended: `60000`)
+- `GEMINI_TIMEOUT_MS`: hard cap for total request time (recommended: `1200000`)
+- `GEMINI_NO_OUTPUT_TIMEOUT_MS`: fail fast if output stalls (recommended: `300000`)
 - Set `GEMINI_NO_OUTPUT_TIMEOUT_MS=0` to disable idle timeout
 
 ### Response Length Limit

@@ -28,8 +28,8 @@ if (process.env.TELEGRAM_TOKEN.includes('your_telegram_bot_token_here') || !proc
 }
 
 const GEMINI_COMMAND = process.env.GEMINI_COMMAND || 'gemini';
-const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '900000', 10);
-const GEMINI_NO_OUTPUT_TIMEOUT_MS = parseInt(process.env.GEMINI_NO_OUTPUT_TIMEOUT_MS || '60000', 10);
+const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '1200000', 10);
+const GEMINI_NO_OUTPUT_TIMEOUT_MS = parseInt(process.env.GEMINI_NO_OUTPUT_TIMEOUT_MS || '300000', 10);
 const GEMINI_APPROVAL_MODE = process.env.GEMINI_APPROVAL_MODE || 'yolo';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || '';
 const ACP_PERMISSION_STRATEGY = process.env.ACP_PERMISSION_STRATEGY || 'allow_once';
