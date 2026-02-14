@@ -51,6 +51,7 @@ const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || 
 // Typing indicator refresh interval (Telegram typing state expires quickly)
 const TYPING_INTERVAL_MS = parseInt(process.env.TYPING_INTERVAL_MS || '4000', 10);
 const TELEGRAM_STREAM_UPDATE_INTERVAL_MS = 1000;
+const MESSAGE_GAP_THRESHOLD_MS = 5000; // Start a new message if gap between chunks > 5s
 
 // Maximum response length to prevent memory issues (Telegram has 4096 char limit anyway)
 const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 10);
@@ -1065,6 +1066,7 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
   let previewBuffer = '';
   let flushTimer: NodeJS.Timeout | null = null;
   let lastFlushAt = 0;
+  let lastChunkAt = 0;
   let finalizedViaLiveMessage = false;
   let startingLiveMessage: Promise<void> | null = null;
   let promptCompleted = false;
@@ -1157,8 +1159,48 @@ async function processSingleMessage(messageContext: any, messageRequestId: numbe
     }
   };
 
+  const finalizeCurrentMessage = async () => {
+    if (!liveMessageId || finalizedViaLiveMessage) {
+      return;
+    }
+
+    clearFlushTimer();
+    await flushPreview(true);
+
+    try {
+      const text = previewText();
+      await messageContext.finalizeLiveMessage(liveMessageId, text);
+      if (ACP_DEBUG_STREAM) {
+        logInfo('Finalized message due to long gap', {
+          requestId: messageRequestId,
+          messageLength: text.length,
+        });
+      }
+    } catch (error: any) {
+      logInfo('Failed to finalize message on gap', {
+        requestId: messageRequestId,
+        error: getErrorMessage(error),
+      });
+    }
+
+    // Reset state to start a new message
+    liveMessageId = undefined;
+    previewBuffer = '';
+    lastFlushAt = 0;
+    startingLiveMessage = null;
+  };
+
   try {
-    const fullResponse = await runAcpPrompt(messageContext.text, (chunk) => {
+    const fullResponse = await runAcpPrompt(messageContext.text, async (chunk) => {
+      const now = Date.now();
+      const gapSinceLastChunk = lastChunkAt > 0 ? now - lastChunkAt : 0;
+
+      // If gap is more than 5 seconds, finalize current message and start a new one
+      if (gapSinceLastChunk > MESSAGE_GAP_THRESHOLD_MS && liveMessageId && previewBuffer) {
+        await finalizeCurrentMessage();
+      }
+
+      lastChunkAt = now;
       previewBuffer += chunk;
       void ensureLiveMessageStarted();
       void scheduleFlush();
