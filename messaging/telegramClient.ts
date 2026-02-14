@@ -28,6 +28,8 @@ class TelegramMessageContext {
   maxMessageLength: number;
   text: string;
   chatId: string | number | undefined;
+  userId: number | undefined;
+  username: string | undefined;
 
   constructor(ctx: any, typingIntervalMs: number, maxMessageLength: number) {
     this.ctx = ctx;
@@ -35,6 +37,8 @@ class TelegramMessageContext {
     this.maxMessageLength = maxMessageLength;
     this.text = ctx.message?.text || '';
     this.chatId = ctx.chat?.id;
+    this.userId = ctx.from?.id;
+    this.username = ctx.from?.username;
   }
 
   startTyping() {

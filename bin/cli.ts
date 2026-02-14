@@ -7,6 +7,7 @@ import process from 'node:process';
 
 const ENV_KEY_MAP: Record<string, string> = {
 	telegramToken: 'TELEGRAM_TOKEN',
+	telegramWhitelist: 'TELEGRAM_WHITELIST',
 	typingIntervalMs: 'TYPING_INTERVAL_MS',
 	geminiCommand: 'GEMINI_COMMAND',
 	geminiApprovalMode: 'GEMINI_APPROVAL_MODE',
@@ -34,6 +35,7 @@ const DEFAULT_AGENT_BRIDGE_HOME = path.join(os.homedir(), '.clawless');
 const DEFAULT_MEMORY_FILE_PATH = path.join(DEFAULT_AGENT_BRIDGE_HOME, 'MEMORY.md');
 const DEFAULT_CONFIG_TEMPLATE = {
 	telegramToken: 'your_telegram_bot_token_here',
+	telegramWhitelist: [],
 	typingIntervalMs: 4000,
 	geminiCommand: 'gemini',
 	geminiApprovalMode: 'yolo',
@@ -108,6 +110,9 @@ function toEnvValue(value: unknown) {
 	}
 	if (typeof value === 'string') {
 		return value;
+	}
+	if (typeof value === 'object') {
+		return JSON.stringify(value);
 	}
 	return String(value);
 }

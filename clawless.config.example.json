@@ -1,5 +1,6 @@
 {
   "telegramToken": "your_telegram_bot_token_here",
+  "telegramWhitelist": [],
   "typingIntervalMs": 4000,
   "geminiCommand": "gemini",
   "geminiApprovalMode": "yolo",
