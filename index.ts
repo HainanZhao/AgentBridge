@@ -576,9 +576,9 @@ function ensureMemoryFile() {
 
   if (!fs.existsSync(MEMORY_FILE_PATH)) {
     const template = [
-      '# Gemini Bridge Memory',
+      '# Clawless Memory',
       '',
-      'This file stores durable memory notes for Gemini Bridge.',
+      'This file stores durable memory notes for Clawless.',
       '',
       '## Notes',
       '',

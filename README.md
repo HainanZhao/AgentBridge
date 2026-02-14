@@ -1,12 +1,42 @@
-# Telegram-Gemini ACP Bridge
+# Clawless — Bring Your Own Agent (Interface + ACP)
 
-A bridge that connects a Telegram bot to the Gemini CLI using the Agent Communication Protocol (ACP). This turns Telegram into a "remote terminal" for your local Gemini agent, enabling rich tool use and persistent context.
+Clawless is an interface bridge built around one core idea: **Bring Your Own Agent**.
+
+Instead of forcing a built-in runtime, Clawless lets you keep your preferred local ACP-capable CLI (Gemini CLI by default) and adds a reliable interface layer, callbacks, and scheduling on top.
+
+Today, Telegram is the first interface adapter; more interfaces are planned.
+
+## Bring Your Own Agent (Main Value)
+
+Clawless is designed so your messaging layer and automation layer stay stable while your agent runtime can change.
+
+- Keep your preferred local agent CLI workflow
+- Keep your existing MCP tools and local files
+- Swap runtimes without rebuilding your bot integration
+- Avoid lock-in to a single all-in-one framework
+
+## Why Clawless
+
+If you have tried heavier all-in-one agent frameworks, Clawless is the minimal alternative:
+
+- **BYO-agent first**: use your preferred local ACP-capable CLI runtime
+- **Lightweight setup**: minimal glue instead of a full platform migration
+- **Local-first control**: your machine, your tools, your data flow
+- **Transport only**: interface layer is separate from the agent runtime
+
+## Interface Adapters
+
+- **Current adapter**: Telegram
+- **Planned direction**: add more interfaces without changing core agent orchestration
+- **Design goal**: keep one message context contract so new interfaces reuse queueing, callbacks, scheduler, and ACP flow
 
 ## Features
 
-- 🤖 **Telegram Bot Interface**: Interact with Gemini CLI through Telegram
-- ⌨️ **Typing Status UX**: Shows Telegram typing indicator while Gemini is processing
-- 🛠️ **Rich Tool Support**: Leverages MCP (Model Context Protocol) servers connected to Gemini CLI
+- 🔀 **Bring Your Own Agent Runtime**: Keep Telegram/callback/scheduler UX while choosing your preferred local ACP-capable CLI
+- 🔌 **Adapter-Friendly Interface Layer**: Telegram today, additional interfaces planned
+- 🤖 **Telegram (Current Adapter)**: Interact with your local agent runtime through Telegram
+- ⌨️ **Typing Status UX**: Shows Telegram typing indicator while the agent is processing
+- 🛠️ **Rich Tool Support**: Leverages MCP (Model Context Protocol) servers connected to your local CLI runtime
 - 🔒 **Privacy**: Runs on your hardware, you control data flow
 - 💾 **Persistent Context**: Maintains local session unlike standard API calls
 - 📬 **Sequential Queueing**: Processes one message at a time to avoid overlap and races
@@ -16,22 +46,22 @@ A bridge that connects a Telegram bot to the Gemini CLI using the Agent Communic
 ## Architecture
 
 ```
-┌──────────┐         ┌───────────┐         ┌─────────────┐
-│ Telegram │ ◄─────► │  Bridge   │ ◄─────► │ Gemini CLI  │
-│   User   │         │ (Node.js) │   ACP   │   (Local)   │
-└──────────┘         └───────────┘         └─────────────┘
+┌──────────────────────┐     ┌────────────────┐     ┌──────────────────────────┐
+│ Interface Adapter    │◄───►│   Clawless     │◄───►│ Local Agent.             │
+│ (Telegram now)       │     │   (Node.js)    │ ACP │ e.g. Gemini CLI (default)│
+└──────────────────────┘     └────────────────┘     └──────────────────────────┘
 ```
 
 The bridge:
-1. Receives messages from Telegram users
-2. Forwards them to the Gemini CLI via ACP (Agent Communication Protocol)
-3. Shows typing status, then sends a single final response
+1. Receives messages from the active interface adapter (Telegram today)
+2. Forwards them to **your configured local agent CLI** via ACP (Agent Communication Protocol)
+3. Sends interface-appropriate progress/status updates, then returns a single final response
 
 ## Prerequisites
 
 - **Node.js** 18.0.0 or higher
-- **Gemini CLI** installed and configured with ACP support
-- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather)
+- **A local ACP-capable agent CLI** installed and configured (Gemini CLI is the default setup)
+- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather) for the current Telegram adapter
 
 ## Installation
 
@@ -72,6 +102,8 @@ After install, the package exposes a CLI command:
 ```bash
 clawless
 ```
+
+> Note: the binary name is currently `clawless` for compatibility, while the project name is Clawless.
 
 Local development alternatives:
 
@@ -193,7 +225,7 @@ pm2 save
 | `CALLBACK_PORT` | No | 8788 | Bind port for callback server |
 | `CALLBACK_AUTH_TOKEN` | No | - | Optional bearer/token guard for callback endpoint |
 | `CALLBACK_MAX_BODY_BYTES` | No | 65536 | Maximum accepted callback request body size |
-| `AGENT_BRIDGE_HOME` | No | ~/.clawless | Home directory for Gemini Bridge runtime files |
+| `AGENT_BRIDGE_HOME` | No | ~/.clawless | Home directory for Clawless runtime files |
 | `MEMORY_FILE_PATH` | No | ~/.clawless/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
 | `MEMORY_MAX_CHARS` | No | 12000 | Max memory-file characters injected into prompt context |
 | `SCHEDULES_FILE_PATH` | No | ~/.clawless/schedules.json | Persistent scheduler storage file |
@@ -229,7 +261,7 @@ curl -sS -X POST "http://127.0.0.1:8788/callback/telegram" \
 
 ### Scheduler API
 
-The bridge includes a built-in cron scheduler that allows you to schedule tasks to be executed through Gemini CLI:
+The bridge includes a built-in cron scheduler that allows you to schedule tasks to be executed through your configured local agent CLI:
 
 - Schedules are persisted to disk and automatically reloaded on restart.
 - Default storage path: `~/.clawless/schedules.json` (override with `SCHEDULES_FILE_PATH`).
@@ -256,7 +288,7 @@ curl -X POST http://127.0.0.1:8788/api/schedule \
   }'
 ```
 
-When a scheduled job runs, it executes the message through Gemini CLI and sends the response to your Telegram chat.
+When a scheduled job runs, it executes the message through your configured local agent runtime and sends the response to your Telegram chat.
 
 **Ask Gemini to create schedules naturally:**
 - "Remind me to take a break in 30 minutes"
@@ -268,10 +300,10 @@ See [SCHEDULER.md](SCHEDULER.md) for complete API documentation.
 ### Persistent Memory File
 
 - The bridge ensures a memory file exists at `~/.clawless/MEMORY.md` on startup.
-- Gemini is started with include access to both `~/.clawless` and your full home directory (`~/`).
+- The configured local agent CLI is started with include access to both `~/.clawless` and your full home directory (`~/`).
 - ACP session setup uses the required `mcpServers` field with an empty array and relies on Gemini CLI runtime defaults for MCP/skills loading.
 - Each prompt includes memory instructions and current `MEMORY.md` content.
-- When asked to memorize/remember something, Gemini is instructed to append new notes under `## Notes`.
+- When asked to memorize/remember something, the agent is instructed to append new notes under `## Notes`.
 
 ### Timeout Tuning
 
@@ -296,27 +328,30 @@ The `MAX_RESPONSE_LENGTH` prevents memory issues with very long responses:
 1. **User sends a message** via Telegram
 2. **Bridge queues** the message if another request is in progress
 3. **Worker dequeues** the next message when prior processing completes
-4. **Gemini run starts** and typing status is shown in Telegram
-5. **Single final reply** is sent when Gemini finishes
+4. **Agent run starts** and typing status is shown in Telegram
+5. **Single final reply** is sent when the run finishes
 
 ### Queueing Behavior
 
 The bridge uses a single-worker in-memory queue:
-- Prevents overlapping Gemini runs
+- Prevents overlapping agent runs
 - Preserves message order
 - Avoids duplicate-edit/fallback races from message updates
 
 ## Advantages Over Standard API Bots
 
-1. **Persistent Context**: The Gemini CLI maintains a local session, unlike stateless API calls
-2. **Local File Access**: Can access files on your server if configured
-3. **MCP Tool Integration**: Automatically uses tools from connected MCP servers (Calendar, Database, etc.)
-4. **Privacy Control**: Runs on your hardware, you control data processing
-5. **Custom Configuration**: Use your specific Gemini CLI setup and preferences
+1. **BYO-Agent Flexibility**: Keep the same bridge while choosing or changing your local CLI runtime
+2. **Persistent Context**: The local agent CLI maintains a local session, unlike stateless API calls
+3. **Local File Access**: Can access files on your server if configured
+4. **MCP Tool Integration**: Uses tools from connected MCP servers (Calendar, Database, etc.)
+5. **Privacy Control**: Runs on your hardware, you control data processing
+6. **Custom Configuration**: Use your specific local CLI setup and preferences
 
 ## Troubleshooting
 
 ### Bot doesn't respond
+
+For the default Gemini CLI setup:
 
 1. Check if Gemini CLI is installed:
 ```bash
@@ -347,22 +382,29 @@ If you see "429 Too Many Requests" errors:
 ### Project Structure
 
 ```
-RemoteAgent/
-├── index.ts              # Main bridge application
+Clawless/
+├── index.ts                        # Main bridge application
+├── bin/
+│   └── cli.ts                      # CLI entrypoint
 ├── messaging/
-│   └── telegramClient.ts # Telegram adapter implementing neutral message context
-├── package.json          # Node.js dependencies
-├── ecosystem.config.json # PM2 configuration
-├── .env.example          # Environment variables template
-├── .env                  # Your local configuration (not in git)
-└── README.md            # This file
+│   └── telegramClient.ts           # Telegram adapter
+├── scheduler/
+│   ├── cronScheduler.ts            # Schedule persistence + cron orchestration
+│   └── scheduledJobHandler.ts      # Scheduled run execution logic
+├── acp/
+│   ├── tempAcpRunner.ts            # Isolated ACP run helper
+│   └── clientHelpers.ts            # ACP helper utilities
+├── package.json                    # Node.js dependencies
+├── ecosystem.config.json           # PM2 configuration
+├── clawless.config.example.json # CLI config template
+└── README.md                       # This file
 ```
 
 ### Adding Features
 
 The codebase is designed to be simple and extensible:
 - Core queue + ACP logic is in `index.ts`
-- Messaging-platform specifics live in `messaging/telegramClient.ts`
+- Interface-specific messaging logic lives in `messaging/telegramClient.ts`
 - New bot platforms can implement the same message context shape (`text`, `startTyping()`, `sendText()`)
 - Error handling is centralized
 - Rate limiting logic is configurable
@@ -401,4 +443,4 @@ For issues and questions:
 
 ---
 
-**Note**: This bridge requires a working Gemini CLI installation with ACP support. Ensure your CLI is properly configured before running the bridge.
+**Note**: This bridge requires a working local ACP-capable CLI (Gemini CLI is the default setup). Ensure your CLI is properly configured before running the bridge.
