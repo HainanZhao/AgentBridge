@@ -93,6 +93,31 @@ ACP_DEBUG_STREAM=false
 4. Copy the token provided by BotFather
 5. Paste it into your `.env` file
 
+## Authorizing Users (Whitelist)
+
+For security, the bot only accepts commands from authorized users. To configure:
+
+1. **Find your Telegram user ID**:
+   - Use [@userinfobot](https://t.me/userinfobot) - send it any message and it will reply with your user ID
+   - Or temporarily start the bot and check logs when you send a message (unauthorized attempts are logged with user ID)
+
+2. **Add user IDs to whitelist** in `~/.clawless/config.json`:
+   ```json
+   {
+     "telegramToken": "your_bot_token",
+     "telegramWhitelist": [123456789, 987654321]
+   }
+   ```
+
+3. **Alternative: Use environment variable**:
+   ```bash
+   TELEGRAM_WHITELIST='[123456789, 987654321]'
+   # or comma-separated
+   TELEGRAM_WHITELIST='123456789,987654321'
+   ```
+
+⚠️ **Security Note**: If `telegramWhitelist` is empty or not configured, **all users will be blocked** by default. This is a safety measure to prevent unauthorized access.
+
 ## Usage
 
 ### CLI Mode
@@ -210,6 +235,7 @@ pm2 save
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `TELEGRAM_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
+| `TELEGRAM_WHITELIST` | No | [] | List of authorized Telegram user IDs. **Security:** If empty, all users are blocked by default. Format: JSON array `[123456789, 987654321]` or comma-separated `"123456789,987654321"` |
 | `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing Telegram typing status |
 | `GEMINI_TIMEOUT_MS` | No | 900000 | Overall timeout for a single Gemini CLI run |
 | `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 60000 | Idle timeout; aborts if Gemini emits no output for this duration |
@@ -414,7 +440,12 @@ The codebase is designed to be simple and extensible:
 - **Never commit** `.env` file with your token (it's in `.gitignore`)
 - **Rotate tokens** if accidentally exposed
 - **Limit bot access** using Telegram's bot settings
-- **Monitor logs** for unusual activity
+- **Configure user whitelist**: Add your Telegram user ID to `telegramWhitelist` in config to authorize access
+  - Find your user ID by messaging the bot (check logs) or using bots like [@userinfobot](https://t.me/userinfobot)
+  - Example config: `"telegramWhitelist": [123456789, 987654321]`
+  - **Default behavior**: If whitelist is empty, all users are blocked (safe default)
+  - Unauthorized access attempts are logged with user ID for security monitoring
+- **Monitor logs** for unusual activity and unauthorized access attempts
 
 ## Contributing
 
