@@ -91,9 +91,9 @@ class SlackMessageContext {
         text: text || '…',
       });
     } catch (error: any) {
-      // Slack may throw error if message hasn't changed
-      // We'll ignore those errors
-      if (!error.message?.includes('message_not_found') && !error.message?.includes('cant_update_message')) {
+      // Check for specific Slack API error codes instead of parsing error messages
+      const errorCode = error.data?.error;
+      if (errorCode !== 'message_not_found' && errorCode !== 'cant_update_message') {
         throw error;
       }
     }
@@ -106,8 +106,9 @@ class SlackMessageContext {
     try {
       await this.updateLiveMessage(messageTs, chunks[0] || 'No response received.');
     } catch (error: any) {
-      const errorMessage = String(error?.message || '').toLowerCase();
-      if (!errorMessage.includes('message_not_found') && !errorMessage.includes('cant_update_message')) {
+      // Check for specific Slack API error codes
+      const errorCode = error.data?.error;
+      if (errorCode !== 'message_not_found' && errorCode !== 'cant_update_message') {
         throw error;
       }
     }

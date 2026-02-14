@@ -64,9 +64,9 @@ class WhatsAppMessageContext {
   }
 
   async updateLiveMessage(messageId: string, text: string) {
-    // WhatsApp doesn't support editing messages in the same way as Telegram
-    // We'll skip this functionality to maintain compatibility
-    // Messages will be sent as new messages instead
+    // WhatsApp doesn't support editing messages
+    // Log a warning to inform that this functionality is not available
+    console.warn('WhatsApp does not support message editing. Message updates are ignored.');
   }
 
   async finalizeLiveMessage(messageId: string, text: string) {
@@ -81,8 +81,9 @@ class WhatsAppMessageContext {
   }
 
   async removeMessage(messageId: string) {
-    // WhatsApp message deletion is limited
-    // We'll skip this for now to maintain compatibility
+    // WhatsApp message deletion is limited and not reliably supported
+    // Log a warning to inform that this functionality is not available
+    console.warn('WhatsApp message deletion is not supported. Deletion request ignored.');
   }
 }
 

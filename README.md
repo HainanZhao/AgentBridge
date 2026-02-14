@@ -152,10 +152,6 @@ ACP_STREAM_STDOUT=false
 ACP_DEBUG_STREAM=false
 ```
 
-## Getting a Telegram Bot Token
-
-See the [Telegram Setup](#telegram-setup) section above.
-
 ## Usage
 
 ### CLI Mode

@@ -80,6 +80,13 @@ const MAX_RESPONSE_LENGTH = parseInt(process.env.MAX_RESPONSE_LENGTH || '4000', 
 // Create appropriate messaging client based on platform
 type MessagingClient = TelegramMessagingClient | WhatsAppMessagingClient | SlackMessagingClient;
 
+function displayWhatsAppQRCode(qr: string): void {
+  console.log('\n=== WhatsApp QR Code ===');
+  console.log('Scan this QR code with your WhatsApp mobile app:');
+  qrcode.generate(qr, { small: true });
+  console.log('========================\n');
+}
+
 let messagingClient: MessagingClient;
 
 if (MESSAGING_PLATFORM === 'telegram') {
@@ -92,12 +99,7 @@ if (MESSAGING_PLATFORM === 'telegram') {
   messagingClient = new WhatsAppMessagingClient({
     typingIntervalMs: TYPING_INTERVAL_MS,
     maxMessageLength: MAX_RESPONSE_LENGTH,
-    qrCallback: (qr: string) => {
-      console.log('\n=== WhatsApp QR Code ===');
-      console.log('Scan this QR code with your WhatsApp mobile app:');
-      qrcode.generate(qr, { small: true });
-      console.log('========================\n');
-    },
+    qrCallback: displayWhatsAppQRCode,
   });
 } else if (MESSAGING_PLATFORM === 'slack') {
   messagingClient = new SlackMessagingClient({
