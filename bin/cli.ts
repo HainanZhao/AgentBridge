@@ -41,7 +41,7 @@ const DEFAULT_CONFIG_TEMPLATE = {
 	geminiApprovalMode: 'yolo',
 	geminiModel: '',
 	acpPermissionStrategy: 'allow_once',
-	geminiTimeoutMs: 900000,
+	geminiTimeoutMs: 1200000,
 	geminiNoOutputTimeoutMs: 300000,
 	geminiKillGraceMs: 5000,
 	maxResponseLength: 4000,
