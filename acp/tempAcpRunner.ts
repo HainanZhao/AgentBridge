@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import { buildPermissionResponse, noOpAcpFileOperation } from './clientHelpers.js';
@@ -34,6 +37,17 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
     logInfo,
   } = options;
 
+  const { source: mcpServersSource, mcpServers } = getMcpServersForSession();
+  const mcpServerNames = mcpServers
+    .map((server) => {
+      if (server && typeof server === 'object' && 'name' in server) {
+        return String((server as { name?: unknown }).name ?? '');
+      }
+
+      return '';
+    })
+    .filter((name) => name.length > 0);
+
   const tempProcess = spawn(command, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     cwd,
@@ -53,6 +67,160 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
   let noOutputTimeout: NodeJS.Timeout | null = null;
   let overallTimeout: NodeJS.Timeout | null = null;
   let cleanedUp = false;
+
+  const normalizeEnvArray = (envValue: unknown) => {
+    if (Array.isArray(envValue)) {
+      return envValue
+        .filter((entry) => entry && typeof entry === 'object')
+        .map((entry) => {
+          const candidate = entry as { name?: unknown; value?: unknown };
+          return {
+            name: String(candidate.name ?? ''),
+            value: String(candidate.value ?? ''),
+          };
+        })
+        .filter((entry) => entry.name.length > 0);
+    }
+
+    if (envValue && typeof envValue === 'object') {
+      return Object.entries(envValue as Record<string, unknown>).map(([name, value]) => ({
+        name,
+        value: String(value ?? ''),
+      }));
+    }
+
+    return [];
+  };
+
+  const normalizeSingleMcpServer = (name: string, serverConfig: unknown) => {
+    if (!serverConfig || typeof serverConfig !== 'object' || Array.isArray(serverConfig)) {
+      return null;
+    }
+
+    const candidate = serverConfig as Record<string, unknown>;
+    const hasCommand = typeof candidate.command === 'string' && candidate.command.length > 0;
+    const hasUrl = typeof candidate.url === 'string' && candidate.url.length > 0;
+
+    if (hasCommand) {
+      return {
+        name,
+        command: String(candidate.command),
+        args: Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)) : [],
+        env: normalizeEnvArray(candidate.env),
+      };
+    }
+
+    if (hasUrl) {
+      const type = candidate.type === 'sse' ? 'sse' : 'http';
+      const headers = Array.isArray(candidate.headers)
+        ? candidate.headers
+            .filter((header) => header && typeof header === 'object')
+            .map((header) => {
+              const typedHeader = header as { name?: unknown; value?: unknown };
+              return {
+                name: String(typedHeader.name ?? ''),
+                value: String(typedHeader.value ?? ''),
+              };
+            })
+            .filter((header) => header.name.length > 0)
+        : [];
+
+      return {
+        type,
+        name,
+        url: String(candidate.url),
+        headers,
+      };
+    }
+
+    return null;
+  };
+
+  const normalizeMcpServers = (value: unknown): unknown[] => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry, index) => normalizeSingleMcpServer(`server_${index + 1}`, entry))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>)
+        .map(([name, serverConfig]) => normalizeSingleMcpServer(name, serverConfig))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    }
+
+    return [];
+  };
+
+  function getMcpServersForSession() {
+    const raw = process.env.ACP_MCP_SERVERS_JSON;
+    if (!raw) {
+      const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+      if (!fs.existsSync(settingsPath)) {
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+
+      try {
+        const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { mcpServers?: unknown };
+        return {
+          source: 'gemini-settings',
+          mcpServers: normalizeMcpServers(parsed?.mcpServers),
+        };
+      } catch (error) {
+        logInfo('Failed to read Gemini settings mcpServers for temp ACP runner; falling back to empty array', {
+          scheduleId,
+          settingsPath,
+          error: getErrorMessage(error),
+        });
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+    }
+
+    try {
+      return {
+        source: 'env-override',
+        mcpServers: normalizeMcpServers(JSON.parse(raw)),
+      };
+    } catch (error) {
+      logInfo('Invalid ACP_MCP_SERVERS_JSON for temp ACP runner; falling back to Gemini settings mcpServers', {
+        scheduleId,
+        error: getErrorMessage(error),
+      });
+
+      const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+      if (!fs.existsSync(settingsPath)) {
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+
+      try {
+        const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { mcpServers?: unknown };
+        return {
+          source: 'gemini-settings',
+          mcpServers: normalizeMcpServers(parsed?.mcpServers),
+        };
+      } catch (settingsError) {
+        logInfo('Failed to read Gemini settings mcpServers after invalid env override; using empty array', {
+          scheduleId,
+          settingsPath,
+          error: getErrorMessage(settingsError),
+        });
+
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+    }
+  }
 
   const terminateProcessGracefully = () => {
     return new Promise<void>((resolve) => {
@@ -210,9 +378,17 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
 
     const session = await tempConnection.newSession({
       cwd,
-      mcpServers: [],
+      mcpServers,
     });
     tempSessionId = session.sessionId;
+
+    logInfo('Scheduler temp ACP session ready', {
+      scheduleId,
+      sessionId: tempSessionId,
+      mcpServersMode: mcpServersSource,
+      mcpServersCount: mcpServers.length,
+      mcpServerNames,
+    });
 
     return await new Promise<string>((resolve, reject) => {
       let response = '';

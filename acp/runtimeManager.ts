@@ -1,4 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 
@@ -46,6 +49,8 @@ export function createAcpRuntime({
   getErrorMessage,
   logInfo,
 }: CreateAcpRuntimeParams) {
+  const acpPrewarmMaxRetries = Number.parseInt(process.env.ACP_PREWARM_MAX_RETRIES || '10', 10);
+
   let geminiProcess: any = null;
   let acpConnection: any = null;
   let acpSessionId: any = null;
@@ -53,6 +58,7 @@ export function createAcpRuntime({
   let activePromptCollector: any = null;
   let manualAbortRequested = false;
   let acpPrewarmRetryTimer: NodeJS.Timeout | null = null;
+  let acpPrewarmRetryAttempts = 0;
   let geminiStderrTail = '';
 
   const appendGeminiStderrTail = (text: string) => {
@@ -174,6 +180,157 @@ export function createAcpRuntime({
     return args;
   };
 
+  const normalizeEnvArray = (envValue: unknown) => {
+    if (Array.isArray(envValue)) {
+      return envValue
+        .filter((entry) => entry && typeof entry === 'object')
+        .map((entry) => {
+          const candidate = entry as { name?: unknown; value?: unknown };
+          return {
+            name: String(candidate.name ?? ''),
+            value: String(candidate.value ?? ''),
+          };
+        })
+        .filter((entry) => entry.name.length > 0);
+    }
+
+    if (envValue && typeof envValue === 'object') {
+      return Object.entries(envValue as Record<string, unknown>).map(([name, value]) => ({
+        name,
+        value: String(value ?? ''),
+      }));
+    }
+
+    return [];
+  };
+
+  const normalizeSingleMcpServer = (name: string, serverConfig: unknown) => {
+    if (!serverConfig || typeof serverConfig !== 'object' || Array.isArray(serverConfig)) {
+      return null;
+    }
+
+    const candidate = serverConfig as Record<string, unknown>;
+    const hasCommand = typeof candidate.command === 'string' && candidate.command.length > 0;
+    const hasUrl = typeof candidate.url === 'string' && candidate.url.length > 0;
+
+    if (hasCommand) {
+      return {
+        name,
+        command: String(candidate.command),
+        args: Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)) : [],
+        env: normalizeEnvArray(candidate.env),
+      };
+    }
+
+    if (hasUrl) {
+      const type = candidate.type === 'sse' ? 'sse' : 'http';
+      const headers = Array.isArray(candidate.headers)
+        ? candidate.headers
+            .filter((header) => header && typeof header === 'object')
+            .map((header) => {
+              const typedHeader = header as { name?: unknown; value?: unknown };
+              return {
+                name: String(typedHeader.name ?? ''),
+                value: String(typedHeader.value ?? ''),
+              };
+            })
+            .filter((header) => header.name.length > 0)
+        : [];
+
+      return {
+        type,
+        name,
+        url: String(candidate.url),
+        headers,
+      };
+    }
+
+    return null;
+  };
+
+  const normalizeMcpServers = (value: unknown): unknown[] => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry, index) => normalizeSingleMcpServer(`server_${index + 1}`, entry))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>)
+        .map(([name, serverConfig]) => normalizeSingleMcpServer(name, serverConfig))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    }
+
+    return [];
+  };
+
+  const getMcpServersForSession = () => {
+    const raw = process.env.ACP_MCP_SERVERS_JSON;
+    if (!raw) {
+      const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+      if (!fs.existsSync(settingsPath)) {
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+
+      try {
+        const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { mcpServers?: unknown };
+        return {
+          source: 'gemini-settings',
+          mcpServers: normalizeMcpServers(parsed?.mcpServers),
+        };
+      } catch (error) {
+        logInfo('Failed to read Gemini settings mcpServers; falling back to empty array', {
+          settingsPath,
+          error: getErrorMessage(error),
+        });
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+    }
+
+    try {
+      return {
+        source: 'env-override',
+        mcpServers: normalizeMcpServers(JSON.parse(raw)),
+      };
+    } catch (error) {
+      logInfo('Invalid ACP_MCP_SERVERS_JSON; falling back to Gemini settings mcpServers', {
+        error: getErrorMessage(error),
+      });
+
+      const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+      if (!fs.existsSync(settingsPath)) {
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+
+      try {
+        const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { mcpServers?: unknown };
+        return {
+          source: 'gemini-settings',
+          mcpServers: normalizeMcpServers(parsed?.mcpServers),
+        };
+      } catch (settingsError) {
+        logInfo('Failed to read Gemini settings mcpServers after invalid env override; using empty array', {
+          settingsPath,
+          error: getErrorMessage(settingsError),
+        });
+
+        return {
+          source: 'default-empty',
+          mcpServers: [],
+        };
+      }
+    }
+  };
+
   const acpClient = {
     async requestPermission(params: any) {
       return buildPermissionResponse(params?.options, acpPermissionStrategy);
@@ -224,7 +381,21 @@ export function createAcpRuntime({
 
     acpInitPromise = (async () => {
       const args = buildGeminiAcpArgs();
-      logInfo('Starting Gemini ACP process', { command: geminiCommand, args });
+      const { source: mcpServersSource, mcpServers } = getMcpServersForSession();
+      const mcpServerNames = mcpServers
+        .map((server) => {
+          if (server && typeof server === 'object' && 'name' in server) {
+            return String((server as { name?: unknown }).name ?? '');
+          }
+
+          return '';
+        })
+        .filter((name) => name.length > 0);
+
+      logInfo('Starting Gemini ACP process', {
+        command: geminiCommand,
+        args,
+      });
       geminiStderrTail = '';
       geminiProcess = spawn(geminiCommand, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -268,11 +439,16 @@ export function createAcpRuntime({
 
         const session = await acpConnection.newSession({
           cwd: process.cwd(),
-          mcpServers: [],
+          mcpServers,
         });
 
         acpSessionId = session.sessionId;
-        logInfo('ACP session ready', { sessionId: acpSessionId });
+        logInfo('ACP session ready', {
+          sessionId: acpSessionId,
+          mcpServersMode: mcpServersSource,
+          mcpServersCount: mcpServers.length,
+          mcpServerNames,
+        });
       } catch (error: any) {
         const baseMessage = getErrorMessage(error);
         const isInternalError = baseMessage.includes('Internal error');
@@ -310,10 +486,21 @@ export function createAcpRuntime({
 
     ensureAcpSession()
       .then(() => {
+        acpPrewarmRetryAttempts = 0;
         logInfo('Gemini ACP prewarm complete');
       })
       .catch((error: unknown) => {
         logInfo('Gemini ACP prewarm failed', { error: getErrorMessage(error) });
+
+        acpPrewarmRetryAttempts += 1;
+        if (acpPrewarmMaxRetries > 0 && acpPrewarmRetryAttempts >= acpPrewarmMaxRetries) {
+          logInfo('Gemini ACP prewarm retries exhausted; stopping automatic retries', {
+            attempts: acpPrewarmRetryAttempts,
+            maxRetries: acpPrewarmMaxRetries,
+          });
+          return;
+        }
+
         if (acpPrewarmRetryMs > 0) {
           acpPrewarmRetryTimer = setTimeout(() => {
             acpPrewarmRetryTimer = null;

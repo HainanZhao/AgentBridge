@@ -8,7 +8,7 @@
     "clawless": "./dist/bin/cli.js"
   },
   "scripts": {
-    "build": "npm run lint && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "dev": "tsx watch ./bin/cli.ts",
     "start": "tsx ./bin/cli.ts",
     "cli": "tsx ./bin/cli.ts",

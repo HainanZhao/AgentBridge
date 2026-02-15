@@ -8,6 +8,15 @@ export function getErrorMessage(error: unknown, fallback = 'Unknown error'): str
   if (error === null || error === undefined) {
     return fallback;
   }
+
+  if (typeof error === 'object') {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+
   return String(error);
 }
 
