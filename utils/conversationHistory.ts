@@ -146,10 +146,7 @@ export function getRelevantHistory(
 /**
  * Format conversation history for prompt injection
  */
-export function formatConversationHistoryForPrompt(
-  entries: ConversationEntry[],
-  maxTotalChars: number,
-): string {
+export function formatConversationHistoryForPrompt(entries: ConversationEntry[], maxTotalChars: number): string {
   if (entries.length === 0) {
     return '(No recent conversation history)';
   }
@@ -160,12 +157,9 @@ export function formatConversationHistoryForPrompt(
   // Add entries in chronological order
   for (const entry of entries) {
     const timestamp = new Date(entry.timestamp).toLocaleString();
-    const entryText = [
-      `[${timestamp}]`,
-      `User: ${entry.userMessage}`,
-      `Assistant: ${entry.botResponse}`,
-      '',
-    ].join('\n');
+    const entryText = [`[${timestamp}]`, `User: ${entry.userMessage}`, `Assistant: ${entry.botResponse}`, ''].join(
+      '\n',
+    );
 
     // Stop if we exceed max chars
     if (totalChars + entryText.length > maxTotalChars) {

@@ -94,12 +94,20 @@ const CALLBACK_AUTH_TOKEN = process.env.CALLBACK_AUTH_TOKEN || '';
 const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || '65536', 10);
 
 // Conversation history configuration
-const CONVERSATION_HISTORY_ENABLED = String(process.env.CONVERSATION_HISTORY_ENABLED || 'true').toLowerCase() === 'true';
-const CONVERSATION_HISTORY_FILE_PATH = process.env.CONVERSATION_HISTORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-history.json');
+const CONVERSATION_HISTORY_ENABLED =
+  String(process.env.CONVERSATION_HISTORY_ENABLED || 'true').toLowerCase() === 'true';
+const CONVERSATION_HISTORY_FILE_PATH =
+  process.env.CONVERSATION_HISTORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-history.json');
 const CONVERSATION_HISTORY_MAX_ENTRIES = parseInt(process.env.CONVERSATION_HISTORY_MAX_ENTRIES || '100', 10);
-const CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY = parseInt(process.env.CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY || '2000', 10);
+const CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY = parseInt(
+  process.env.CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY || '2000',
+  10,
+);
 const CONVERSATION_HISTORY_MAX_TOTAL_CHARS = parseInt(process.env.CONVERSATION_HISTORY_MAX_TOTAL_CHARS || '8000', 10);
-const CONVERSATION_HISTORY_MAX_RECENT_ENTRIES = parseInt(process.env.CONVERSATION_HISTORY_MAX_RECENT_ENTRIES || '5', 10);
+const CONVERSATION_HISTORY_MAX_RECENT_ENTRIES = parseInt(
+  process.env.CONVERSATION_HISTORY_MAX_RECENT_ENTRIES || '5',
+  10,
+);
 
 // Typing indicator refresh interval (platform typing state expires quickly)
 const TYPING_INTERVAL_MS = parseInt(process.env.TYPING_INTERVAL_MS || '4000', 10);
@@ -318,7 +326,7 @@ const { enqueueMessage, getQueueLength } = createMessageQueueProcessor({
   processSingleMessage: (messageContext, messageRequestId) => {
     // Set current processing chat context for buildPromptWithMemory
     currentProcessingChatId = messageContext.chatId;
-    
+
     return processSingleTelegramMessage({
       messageContext,
       messageRequestId,
