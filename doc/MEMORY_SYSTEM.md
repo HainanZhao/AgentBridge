@@ -74,10 +74,6 @@ Prompt context is built in this order:
 - Filters by `chat_id`
 - Returns `topK` entries in chronological order and recap format
 
-### TF-IDF fallback path
-
-- Removed.
-
 ## Bounded Growth and Scalability Controls
 
 The system is intentionally capped in multiple places:
@@ -141,5 +137,5 @@ CONVERSATION_SEMANTIC_RECALL_ENABLED=false
 
 - `index.ts` (runtime orchestration + prompt building)
 - `utils/memory.ts` (operator memory file handling)
-- `utils/conversationHistory.ts` (history persistence + TF-IDF fallback)
+- `utils/conversationHistory.ts` (history persistence + recap formatting)
 - `utils/semanticConversationMemory.ts` (semantic vector store + retrieval)

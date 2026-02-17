@@ -121,7 +121,7 @@ Config precedence:
 
 function parseArgs(argv: string[]) {
   const result = {
-    configPath: process.env.GEMINI_BRIDGE_CONFIG || process.env.AGENT_BRIDGE_CONFIG || DEFAULT_CONFIG_PATH,
+    configPath: process.env.CLAWLESS_CONFIG || DEFAULT_CONFIG_PATH,
     help: false,
   };
 

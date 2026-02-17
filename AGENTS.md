@@ -192,7 +192,7 @@ curl -X PATCH http://127.0.0.1:8788/api/schedule/<schedule_id> \
   }'
 ```
 
-See [SCHEDULER.md](SCHEDULER.md) for complete API details.
+See [doc/SCHEDULER.md](doc/SCHEDULER.md) for complete API details.
 
 ### Persistent Memory File
 
