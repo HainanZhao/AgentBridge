@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { runConfigTui } from './configTui.js';
 
 const ENV_KEY_MAP: Record<string, string> = {
   messagingPlatform: 'MESSAGING_PLATFORM',
@@ -107,10 +108,10 @@ function printHelp() {
   console.log(`clawless
 
 Usage:
-	clawless [--config <path>]
+  clawless [--config [path]]
 
 Options:
-	--config <path>   Path to JSON config file (default: ~/.clawless/config.json)
+  --config [path]   Open config TUI (or use custom config path)
 	-h, --help        Show this help message
 
 Config precedence:
@@ -123,6 +124,7 @@ function parseArgs(argv: string[]) {
   const result = {
     configPath: process.env.CLAWLESS_CONFIG || DEFAULT_CONFIG_PATH,
     help: false,
+    openConfigTui: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -135,9 +137,11 @@ function parseArgs(argv: string[]) {
 
     if (arg === '--config') {
       const value = argv[index + 1];
-      if (!value) {
-        throw new Error('--config requires a file path');
+      if (!value || value.startsWith('-')) {
+        result.openConfigTui = true;
+        continue;
       }
+
       result.configPath = value;
       index += 1;
       continue;
@@ -280,15 +284,32 @@ async function main() {
     process.exit(0);
   }
 
-  const configState = ensureConfigFile(args.configPath);
-  const memoryState = ensureMemoryFromEnv();
-  logMemoryFileCreation(memoryState);
+  const resolvedConfigPath = resolveConfigPath(args.configPath);
+  const configExists = fs.existsSync(resolvedConfigPath);
 
-  if (configState.created) {
-    console.log(`[clawless] Created config template: ${configState.path}`);
-    console.log('[clawless] Fill in placeholder values, then run clawless again.');
+  if (!configExists) {
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      const tuiResult = await runConfigTui(args.configPath, DEFAULT_CONFIG_TEMPLATE, resolveConfigPath);
+      if (!tuiResult.saved) {
+        throw new Error('Config file is required. Re-run and save configuration in TUI.');
+      }
+    } else {
+      const configState = ensureConfigFile(args.configPath);
+      console.log(`[clawless] Created config template: ${configState.path}`);
+      console.log('[clawless] Fill in placeholder values, then run clawless again.');
+      process.exit(0);
+    }
+  } else if (args.openConfigTui) {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      throw new Error('Config TUI requires an interactive terminal');
+    }
+
+    await runConfigTui(args.configPath, DEFAULT_CONFIG_TEMPLATE, resolveConfigPath);
     process.exit(0);
   }
+
+  const memoryState = ensureMemoryFromEnv();
+  logMemoryFileCreation(memoryState);
 
   const loadedConfigPath = loadConfigFile(args.configPath);
   if (loadedConfigPath) {

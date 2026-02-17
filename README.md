@@ -190,18 +190,23 @@ npx clawless
 
 ### Config File (CLI)
 
-On first run, the CLI automatically creates:
+On first run (if no config exists), the CLI opens an interactive config TUI and saves:
 
 ```text
 ~/.clawless/config.json
 ```
 
-with placeholder values, then exits so you can edit it.
+TUI controls:
+- `↑` / `↓`: move between keys
+- `Enter`: edit selected value
+- `←` / `→`: change enum values (for example `messagingPlatform`, `geminiApprovalMode`)
+- `s`: save and exit
+- `q`: quit without saving
 
-After updating placeholders, run again:
+You can also open the config TUI any time with:
 
 ```bash
-clawless
+clawless --config
 ```
 
 You can also use a custom path:
@@ -210,7 +215,7 @@ You can also use a custom path:
 clawless --config /path/to/config.json
 ```
 
-If the custom config path does not exist, a template file is created there as well.
+If the custom config path does not exist, Clawless opens the config TUI (interactive terminals) or creates a template file (non-interactive terminals).
 
 You can still bootstrap from the example file if preferred:
 
