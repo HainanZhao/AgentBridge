@@ -95,7 +95,7 @@ Canonical config/env key mapping is documented in [README.md](README.md) under â
 | `MEMORY_FILE_PATH` | No | ~/.clawless/MEMORY.md | Persistent memory file path injected into Gemini prompt context |
 | `MEMORY_MAX_CHARS` | No | 12000 | Max memory-file characters injected into prompt context |
 | `CONVERSATION_HISTORY_ENABLED` | No | true | Enable/disable conversation history tracking and injection |
-| `CONVERSATION_HISTORY_FILE_PATH` | No | ~/.clawless/conversation-history.db | Conversation history SQLite file path |
+| `CONVERSATION_HISTORY_FILE_PATH` | No | ~/.clawless/conversation-history.jsonl | Conversation history JSONL file path |
 | `CONVERSATION_HISTORY_MAX_ENTRIES` | No | 100 | Maximum number of conversation entries to keep (FIFO rotation) |
 | `CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY` | No | 2000 | Maximum characters per conversation entry (truncates longer messages) |
 | `CONVERSATION_HISTORY_MAX_TOTAL_CHARS` | No | 8000 | Maximum total characters to inject into prompt context |
@@ -115,6 +115,7 @@ Canonical config/env key mapping is documented in [README.md](README.md) under â
 - `POST http://127.0.0.1:8788/callback/slack` - Slack callback alias (when Slack platform is active)
 - `GET http://127.0.0.1:8788/healthz` - Health check
 - `POST/GET/DELETE http://127.0.0.1:8788/api/schedule`, `GET/PATCH http://127.0.0.1:8788/api/schedule/:id` - Scheduler API
+- `POST http://127.0.0.1:8788/api/memory/semantic-recall` - On-demand semantic recall API (`input`, optional `chatId`, optional `topK`)
 
 Request body for callback:
 
@@ -135,6 +136,19 @@ curl -sS -X POST "http://127.0.0.1:8788/callback" \
   -H "Content-Type: application/json" \
   -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
   -d '{"text":"Backup completed at 03:00"}'
+```
+
+Semantic recall example:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8788/api/memory/semantic-recall" \
+  -H "Content-Type: application/json" \
+  -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
+  -d '{
+    "input": "What did we decide about semantic memory design?",
+    "chatId": "D0AF7JTCB70",
+    "topK": 3
+  }'
 ```
 
 ### Scheduler API

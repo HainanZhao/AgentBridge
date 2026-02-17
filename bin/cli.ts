@@ -89,7 +89,7 @@ const DEFAULT_CONFIG_TEMPLATE = {
   memoryFilePath: '~/.clawless/MEMORY.md',
   memoryMaxChars: 12000,
   conversationHistoryEnabled: true,
-  conversationHistoryFilePath: '~/.clawless/conversation-history.db',
+  conversationHistoryFilePath: '~/.clawless/conversation-history.jsonl',
   conversationHistoryMaxEntries: 100,
   conversationHistoryMaxCharsPerEntry: 2000,
   conversationHistoryMaxTotalChars: 8000,

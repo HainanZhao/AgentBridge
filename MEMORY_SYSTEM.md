@@ -18,8 +18,8 @@ Clawless memory is split into three independent stores:
    - Purpose: persistent operator/user notes injected into prompt context
 
 2. **Conversation history store**
-   - Path default: `~/.clawless/conversation-history.db`
-   - Purpose: SQLite-backed chat transcript entries used for recap
+   - Path default: `~/.clawless/conversation-history.jsonl`
+   - Purpose: line-delimited JSON (JSONL) chat transcript entries used for recap
 
 3. **Semantic embedding store**
    - Path default: `~/.clawless/conversation-semantic-memory.db`
@@ -32,7 +32,7 @@ Clawless memory is split into three independent stores:
 - Ensures bridge home directory exists (`AGENT_BRIDGE_HOME`, default `~/.clawless`)
 - Ensures `MEMORY.md` exists
 - If conversation history is enabled:
-   - Ensures `conversation-history.db` schema exists
+   - Ensures `conversation-history.jsonl` file exists
   - If semantic recall is enabled:
       - Ensures semantic store schema exists
     - Warms semantic index from recent history entries (bounded by semantic max entries)
@@ -42,10 +42,15 @@ Clawless memory is split into three independent stores:
 Prompt context is built in this order:
 
 1. Load `MEMORY.md` (bounded by `MEMORY_MAX_CHARS`)
-2. If conversation history is enabled and a chat id is available:
-   - Try semantic retrieval first (top K by vector similarity)
-3. Inject resulting conversation recap (bounded by total prompt char budget)
-4. If semantic retrieval is unavailable/empty, inject recent conversation history only once at startup context
+2. Send prompt to Gemini CLI without automatic semantic recap injection
+3. Agent can call local semantic recall API on demand when additional context is needed
+
+### 2.1) On-demand semantic recall API
+
+- Endpoint: `POST /api/memory/semantic-recall`
+- Request body: `{"input":"current question","chatId":"optional","topK":3}`
+- Response includes matching entries and a pre-formatted recap block
+- This keeps normal prompts lean and fetches historical context only when required
 
 ### 3) After response is sent
 
@@ -53,26 +58,25 @@ Prompt context is built in this order:
 - Enforce per-entry truncation and global FIFO rotation
 - If semantic recall is enabled, index the appended entry into semantic store
 
-## Persistence Model (Scalable)
+## Persistence Model
 
-- Both history and semantic layers now use **SQLite** as the persistence engine.
-- Writes are incremental row inserts/updates instead of full-file rewrites.
+- Conversation history uses **JSONL** text storage for easy inspection/debugging.
+- Semantic storage uses **SQLite** for embeddings and vector search metadata.
 - Semantic retrieval uses the **sqlite-vec extension** for SQLite KNN vector search.
-- Retention is enforced by deleting older rows beyond configured caps.
+- Retention is enforced by capped JSONL history entries and semantic row pruning.
 
 ## How Recap Selection Works
 
-### Semantic path (primary when enabled)
+### Semantic path (on demand)
 
-- Embeds current user prompt with `node-llama-cpp`
-- Compares against stored entry embeddings for the same chat
-- Picks `topK` entries by cosine similarity
-- Returns entries in chronological order for prompt formatting
+- Embeds requested input with `node-llama-cpp`
+- Runs KNN search in `sqlite-vec`
+- Filters by `chat_id`
+- Returns `topK` entries in chronological order and recap format
 
 ### TF-IDF fallback path
 
-- Removed for simplicity.
-- Fallback behavior now uses most recent `topK` history entries (no TF-IDF ranking), injected once at startup context.
+- Removed.
 
 ## Bounded Growth and Scalability Controls
 
@@ -115,7 +119,7 @@ CONVERSATION_SEMANTIC_RECALL_ENABLED=false
 
 ## Operational Notes
 
-- SQLite significantly reduces write amplification versus JSON rewrite approaches.
+- Conversation history is intentionally human-readable and easy to inspect with standard text tools.
 - Semantic ranking now runs in SQLite via `sqlite-vec` (`MATCH` + `k`) and is then filtered by chat.
 - For larger scale beyond single-node SQLite, migrate to a dedicated vector DB.
 
@@ -131,7 +135,7 @@ CONVERSATION_SEMANTIC_RECALL_ENABLED=false
 
 3. **Memory looks stale**
    - Confirm append path is enabled (`CONVERSATION_HISTORY_ENABLED=true`)
-   - Inspect the SQLite stores under `~/.clawless`
+   - Inspect `~/.clawless/conversation-history.jsonl` and semantic SQLite store files under `~/.clawless`
 
 ## Source Files
 

@@ -24,6 +24,12 @@ type SemanticRow = {
   platform: string;
 };
 
+type SemanticEntryForTriplet = {
+  seq: number;
+  user_message: string;
+  bot_response: string;
+};
+
 const VECTOR_TABLE_NAME = 'semantic_memory_vectors';
 const META_TABLE_NAME = 'semantic_memory_meta';
 
@@ -352,11 +358,16 @@ export class SemanticConversationMemory {
     return normalizeVector(numericVector);
   }
 
-  private buildEmbeddingInput(entry: Pick<ConversationEntry, 'userMessage' | 'botResponse'>): string {
-    return truncateForEmbedding(
-      [`User: ${entry.userMessage}`, `Assistant: ${entry.botResponse}`].join('\n'),
-      this.config.maxCharsPerEntry,
-    );
+  private buildEmbeddingInput(
+    entry: Pick<ConversationEntry, 'userMessage' | 'botResponse'>,
+    followUpUserMessage?: string,
+  ): string {
+    const lines = [`User: ${entry.userMessage}`, `Assistant: ${entry.botResponse}`];
+    if (followUpUserMessage && followUpUserMessage.trim().length > 0) {
+      lines.push(`Follow-up User: ${followUpUserMessage}`);
+    }
+
+    return truncateForEmbedding(lines.join('\n'), this.config.maxCharsPerEntry);
   }
 
   async indexEntry(entry: ConversationEntry): Promise<void> {
@@ -382,9 +393,18 @@ export class SemanticConversationMemory {
         VALUES (@entry_id, @timestamp, @chat_id, @user_message, @bot_response, @platform)
       `);
       const findSeqStmt = db.prepare('SELECT seq FROM semantic_memory_entries WHERE entry_id = ?');
+      const deleteVectorStmt = db.prepare(`DELETE FROM ${VECTOR_TABLE_NAME} WHERE rowid = CAST(? AS INTEGER)`);
       const insertVectorStmt = db.prepare(
-        `INSERT OR IGNORE INTO ${VECTOR_TABLE_NAME}(rowid, embedding) VALUES (CAST(? AS INTEGER), ?)`,
+        `INSERT INTO ${VECTOR_TABLE_NAME}(rowid, embedding) VALUES (CAST(? AS INTEGER), ?)`,
       );
+      const findPreviousEntryStmt = db.prepare(`
+        SELECT seq, user_message, bot_response
+        FROM semantic_memory_entries
+        WHERE chat_id = ?
+          AND seq < ?
+        ORDER BY seq DESC
+        LIMIT 1
+      `);
       const pruneEntryStmt = db.prepare(`
         DELETE FROM semantic_memory_entries
         WHERE seq NOT IN (
@@ -395,6 +415,8 @@ export class SemanticConversationMemory {
         DELETE FROM ${VECTOR_TABLE_NAME}
         WHERE rowid NOT IN (SELECT seq FROM semantic_memory_entries)
       `);
+
+      let currentRowId: number | null = null;
 
       const transaction = db.transaction(() => {
         const insertResult = insertEntryStmt.run({
@@ -409,8 +431,10 @@ export class SemanticConversationMemory {
         const seqRow = findSeqStmt.get(entryId) as { seq: number } | undefined;
         const parsedRowId = Number(seqRow?.seq);
         const rowId = Number.isInteger(parsedRowId) && parsedRowId > 0 ? parsedRowId : null;
+        currentRowId = rowId;
 
         if (insertResult.changes > 0 && rowId !== null) {
+          deleteVectorStmt.run(rowId);
           insertVectorStmt.run(rowId, JSON.stringify(vector));
         } else if (insertResult.changes > 0 && rowId === null) {
           this.logInfo('Skipped semantic vector insert due to invalid rowid', {
@@ -426,6 +450,29 @@ export class SemanticConversationMemory {
       });
 
       transaction();
+
+      if (currentRowId !== null) {
+        const previousEntry = findPreviousEntryStmt.get(entry.chatId, currentRowId) as
+          | SemanticEntryForTriplet
+          | undefined;
+
+        if (previousEntry) {
+          const previousEmbeddingInput = this.buildEmbeddingInput(
+            {
+              userMessage: previousEntry.user_message,
+              botResponse: previousEntry.bot_response,
+            },
+            entry.userMessage,
+          );
+          const previousVector = await this.getEmbeddingVector(previousEmbeddingInput);
+
+          if (previousVector.length > 0) {
+            this.ensureVectorTableForDimension(db, previousVector.length);
+            deleteVectorStmt.run(previousEntry.seq);
+            insertVectorStmt.run(previousEntry.seq, JSON.stringify(previousVector));
+          }
+        }
+      }
     } catch (error: any) {
       this.logInfo('Failed to index semantic conversation entry', {
         error: getErrorMessage(error),

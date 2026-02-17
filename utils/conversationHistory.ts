@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import Database from 'better-sqlite3';
 import { getErrorMessage } from './error.js';
 
 type LogInfoFn = (message: string, details?: unknown) => void;
@@ -33,8 +32,6 @@ type ConversationRow = {
   platform: string;
 };
 
-const dbCache = new Map<string, Database.Database>();
-
 function toEntry(row: ConversationRow): ConversationEntry {
   return {
     timestamp: row.timestamp,
@@ -45,34 +42,71 @@ function toEntry(row: ConversationRow): ConversationEntry {
   };
 }
 
-function getDatabase(filePath: string): Database.Database {
-  let db = dbCache.get(filePath);
-  if (db) {
-    return db;
+function isConversationRow(value: unknown): value is ConversationRow {
+  if (!value || typeof value !== 'object') {
+    return false;
   }
 
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  db = new Database(filePath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('temp_store = MEMORY');
+  const row = value as ConversationRow;
+  return (
+    typeof row.timestamp === 'string' &&
+    typeof row.chat_id === 'string' &&
+    typeof row.user_message === 'string' &&
+    typeof row.bot_response === 'string' &&
+    typeof row.platform === 'string'
+  );
+}
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS conversation_history (
-      seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT NOT NULL,
-      chat_id TEXT NOT NULL,
-      user_message TEXT NOT NULL,
-      bot_response TEXT NOT NULL,
-      platform TEXT NOT NULL
-    );
+function readConversationRows(filePath: string, logInfo?: LogInfoFn): ConversationRow[] {
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
 
-    CREATE INDEX IF NOT EXISTS idx_conversation_history_chat_seq
-      ON conversation_history(chat_id, seq);
-  `);
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    if (!content.trim()) {
+      return [];
+    }
 
-  dbCache.set(filePath, db);
-  return db;
+    const rows: ConversationRow[] = [];
+    const lines = content.split('\n');
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index].trim();
+      if (!line) {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(line);
+        if (isConversationRow(parsed)) {
+          rows.push(parsed);
+        }
+      } catch (error: any) {
+        if (logInfo) {
+          logInfo('Skipping malformed conversation history line', {
+            filePath,
+            lineNumber: index + 1,
+            error: getErrorMessage(error),
+          });
+        }
+      }
+    }
+
+    return rows;
+  } catch (error: any) {
+    if (logInfo) {
+      logInfo('Failed to read conversation history file', {
+        filePath,
+        error: getErrorMessage(error),
+      });
+    }
+    return [];
+  }
+}
+
+function writeConversationRows(filePath: string, rows: ConversationRow[]) {
+  const content = rows.map((row) => JSON.stringify(row)).join('\n');
+  fs.writeFileSync(filePath, content.length > 0 ? `${content}\n` : '', 'utf8');
 }
 
 /**
@@ -80,7 +114,11 @@ function getDatabase(filePath: string): Database.Database {
  */
 export function ensureConversationHistoryFile(filePath: string, logInfo: LogInfoFn) {
   try {
-    getDatabase(filePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '', 'utf8');
+      logInfo('Created conversation history file', { filePath });
+    }
   } catch (error: any) {
     logInfo('Failed to initialize conversation history store', {
       filePath,
@@ -100,7 +138,7 @@ export function appendConversationEntry(
   const { filePath, maxEntries, maxCharsPerEntry, logInfo } = config;
 
   try {
-    const db = getDatabase(filePath);
+    ensureConversationHistoryFile(filePath, logInfo);
 
     const truncateText = (text: string) => {
       if (text.length <= maxCharsPerEntry) {
@@ -117,41 +155,29 @@ export function appendConversationEntry(
       platform: entry.platform,
     };
 
-    const insertStmt = db.prepare(`
-      INSERT INTO conversation_history (timestamp, chat_id, user_message, bot_response, platform)
-      VALUES (@timestamp, @chat_id, @user_message, @bot_response, @platform)
-    `);
-
-    const pruneStmt = db.prepare(`
-      DELETE FROM conversation_history
-      WHERE seq NOT IN (
-        SELECT seq FROM conversation_history ORDER BY seq DESC LIMIT ?
-      )
-    `);
-
-    const countStmt = db.prepare('SELECT COUNT(*) AS total FROM conversation_history');
-
-    const transaction = db.transaction(() => {
-      insertStmt.run({
+    fs.appendFileSync(
+      filePath,
+      `${JSON.stringify({
         timestamp: newEntry.timestamp,
         chat_id: newEntry.chatId,
         user_message: newEntry.userMessage,
         bot_response: newEntry.botResponse,
         platform: newEntry.platform,
-      });
+      })}\n`,
+      'utf8',
+    );
 
-      if (maxEntries > 0) {
-        pruneStmt.run(maxEntries);
-      }
-    });
+    const rows = readConversationRows(filePath, logInfo);
+    let finalRows = rows;
+    if (maxEntries > 0 && rows.length > maxEntries) {
+      finalRows = rows.slice(-maxEntries);
+      writeConversationRows(filePath, finalRows);
+    }
 
-    transaction();
-
-    const countRow = countStmt.get() as { total: number };
     logInfo('Conversation entry appended', {
       chatId: entry.chatId,
       platform: entry.platform,
-      totalEntries: countRow.total,
+      totalEntries: finalRows.length,
     });
 
     return newEntry;
@@ -172,13 +198,7 @@ export function loadConversationHistory(config: ConversationHistoryConfig): Conv
   const { filePath, logInfo } = config;
 
   try {
-    const db = getDatabase(filePath);
-    const rows = db
-      .prepare(
-        'SELECT timestamp, chat_id, user_message, bot_response, platform FROM conversation_history ORDER BY seq ASC',
-      )
-      .all() as ConversationRow[];
-
+    const rows = readConversationRows(filePath, logInfo);
     return rows.map(toEntry);
   } catch (error: any) {
     logInfo('Failed to load conversation history', {
@@ -198,21 +218,9 @@ export function getRelevantHistory(
   maxEntries = 10,
 ): ConversationEntry[] {
   try {
-    const db = getDatabase(config.filePath);
-    const rows = db
-      .prepare(
-        `
-          SELECT timestamp, chat_id, user_message, bot_response, platform
-          FROM conversation_history
-          WHERE chat_id = ?
-          ORDER BY seq DESC
-          LIMIT ?
-        `,
-      )
-      .all(chatId, Math.max(1, maxEntries)) as ConversationRow[];
-
-    rows.reverse();
-    return rows.map(toEntry);
+    const entries = loadConversationHistory(config);
+    const limit = Math.max(1, maxEntries);
+    return entries.filter((entry) => entry.chatId === chatId).slice(-limit);
   } catch (_error) {
     return [];
   }
@@ -223,20 +231,8 @@ export function getRelevantHistory(
  */
 export function getRecentHistory(config: ConversationHistoryConfig, maxEntries = 10): ConversationEntry[] {
   try {
-    const db = getDatabase(config.filePath);
-    const rows = db
-      .prepare(
-        `
-          SELECT timestamp, chat_id, user_message, bot_response, platform
-          FROM conversation_history
-          ORDER BY seq DESC
-          LIMIT ?
-        `,
-      )
-      .all(Math.max(1, maxEntries)) as ConversationRow[];
-
-    rows.reverse();
-    return rows.map(toEntry);
+    const entries = loadConversationHistory(config);
+    return entries.slice(-Math.max(1, maxEntries));
   } catch (_error) {
     return [];
   }

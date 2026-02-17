@@ -296,6 +296,25 @@ nohup clawless > clawless.log 2>&1 &
 
 For production hosting, use any process manager or platform you prefer (for example: systemd, PM2, Docker, or your cloud runtime).
 
+### On-Demand Semantic Recall API
+
+If you want the agent to fetch semantic context only when needed, call the local endpoint:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8788/api/memory/semantic-recall" \
+  -H "Content-Type: application/json" \
+  -H "x-callback-token: $CALLBACK_AUTH_TOKEN" \
+  -d '{
+    "input": "What did we decide about semantic memory design?",
+    "chatId": "D0AF7JTCB70",
+    "topK": 3
+  }'
+```
+
+- `input` is required.
+- `chatId` is optional (falls back to the persisted bound chat when available).
+- `topK` is optional (defaults to `CONVERSATION_HISTORY_RECAP_TOP_K`).
+
 ## Advanced Docs
 
 For runtime configuration, callback/scheduler APIs, troubleshooting, queue/flow internals, development notes, and security guidance, see `AGENTS.md`.

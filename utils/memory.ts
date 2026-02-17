@@ -53,7 +53,6 @@ export function buildPromptWithMemory(params: {
   callbackAuthToken: string;
   memoryContext: string;
   messagingPlatform: string;
-  conversationContext?: string;
 }) {
   const {
     userPrompt,
@@ -64,11 +63,11 @@ export function buildPromptWithMemory(params: {
     callbackAuthToken,
     memoryContext,
     messagingPlatform,
-    conversationContext,
   } = params;
 
   const callbackEndpoint = `http://${callbackHost}:${callbackPort}/callback/${messagingPlatform}`;
   const scheduleEndpoint = `http://${callbackHost}:${callbackPort}/api/schedule`;
+  const semanticRecallEndpoint = `http://${callbackHost}:${callbackPort}/api/memory/semantic-recall`;
 
   const parts = [
     'System instruction:',
@@ -94,18 +93,20 @@ export function buildPromptWithMemory(params: {
     '- Never edit scheduler persistence files directly; always mutate schedules through the Scheduler API.',
     `- When schedule runs, it executes the message through Gemini CLI and sends results to ${messagingPlatform}.`,
     '- Use this API when user asks to schedule tasks, set reminders, or create recurring jobs.',
+    '',
+    '**Semantic recall API (on-demand):**',
+    `- Endpoint: POST ${semanticRecallEndpoint}`,
+    '- Request body: {"input": "current user question", "chatId": "optional", "topK": 3}',
+    '- Use this endpoint only when you need additional historical context that is not obvious from current prompt/memory.',
+    '- Prefer dynamic fetch over assuming prior context; keep prompts lean unless context is required.',
+    '- If `chatId` is omitted, server falls back to persisted bound chat context when available.',
     callbackAuthToken
-      ? '- Scheduler auth is enabled: include `x-callback-token` (or bearer token) header when creating requests.'
-      : '- Scheduler auth is disabled unless CALLBACK_AUTH_TOKEN is configured.',
+      ? '- API auth is enabled (scheduler + semantic recall): include `x-callback-token` (or bearer token) header.'
+      : '- API auth is disabled unless CALLBACK_AUTH_TOKEN is configured.',
   ];
 
   if (memoryContext && memoryContext.trim().length > 0) {
     parts.push('', 'Current memory context:', memoryContext);
-  }
-
-  // Inject conversation history if available
-  if (conversationContext && conversationContext.trim().length > 0) {
-    parts.push('', 'Relevant older conversation recap:', conversationContext);
   }
 
   parts.push('', 'User message:', userPrompt);
