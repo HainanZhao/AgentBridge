@@ -210,7 +210,7 @@ On first run (if no config exists), the CLI opens an interactive config TUI and 
 TUI controls:
 - `↑` / `↓`: move between keys
 - `Enter`: edit selected value
-- `←` / `→`: change enum values (for example `messagingPlatform`, `geminiApprovalMode`)
+- `←` / `→`: change enum values (for example `messagingPlatform`, `cliAgentApprovalMode`)
 - `s`: save and exit
 - `q`: quit without saving
 

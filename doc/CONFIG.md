@@ -15,18 +15,11 @@ This document lists `config.json` keys, defaults, and what each setting controls
 | `typingIntervalMs` | `4000` | Typing indicator refresh interval while processing. |
 | `streamUpdateIntervalMs` | `5000` | Minimum interval between progressive streaming message updates. |
 | `cliAgent` | `gemini` | CLI agent type to use (`gemini` or `opencode`). |
-| `cliAgentCommand` | *(auto)* | CLI agent executable name/path. Auto-set based on `cliAgent` if not specified. |
 | `cliAgentApprovalMode` | `yolo` | Agent approval mode (`default`, `auto_edit`, `yolo`, `plan`). |
 | `cliAgentModel` | `""` | Optional model override for the agent. |
 | `cliAgentTimeoutMs` | `1200000` | Hard timeout for one agent run (ms). |
 | `cliAgentNoOutputTimeoutMs` | `300000` | Idle timeout when no output is produced (ms). |
 | `cliAgentKillGraceMs` | `5000` | Grace period before forced process kill after termination (ms). |
-| `geminiCommand` | `gemini` | **[Deprecated]** Use `cliAgentCommand` instead. Legacy Gemini CLI path. |
-| `geminiApprovalMode` | `yolo` | **[Deprecated]** Use `cliAgentApprovalMode` instead. Legacy approval mode. |
-| `geminiModel` | `""` | **[Deprecated]** Use `cliAgentModel` instead. Legacy model override. |
-| `geminiTimeoutMs` | `1200000` | **[Deprecated]** Use `cliAgentTimeoutMs` instead. Legacy timeout. |
-| `geminiNoOutputTimeoutMs` | `300000` | **[Deprecated]** Use `cliAgentNoOutputTimeoutMs` instead. Legacy idle timeout. |
-| `geminiKillGraceMs` | `5000` | **[Deprecated]** Use `cliAgentKillGraceMs` instead. Legacy kill grace period. |
 | `acpPermissionStrategy` | `allow_once` | Auto selection strategy for ACP permission prompts. |
 | `acpPrewarmRetryMs` | `30000` | Delay before retrying ACP prewarm after failure (ms). |
 | `acpPrewarmMaxRetries` | `10` | Max prewarm retries (`0` = unlimited). |
@@ -61,7 +54,6 @@ To switch between different CLI agents (e.g., Gemini CLI, OpenCode), set the `cl
 ```json
 {
   "cliAgent": "opencode",
-  "cliAgentCommand": "opencode",
   "cliAgentApprovalMode": "yolo"
 }
 ```

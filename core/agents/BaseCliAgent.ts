@@ -74,7 +74,8 @@ export abstract class BaseCliAgent {
    */
   validate(): { valid: boolean; error?: string } {
     try {
-      const result = spawnSync(this.config.command, ['--version'], {
+      const command = this.getCommand();
+      const result = spawnSync(command, ['--version'], {
         stdio: 'ignore',
         timeout: 10000,
         killSignal: 'SIGKILL',
@@ -83,14 +84,14 @@ export abstract class BaseCliAgent {
       if ((result as any).error?.code === 'ENOENT') {
         return {
           valid: false,
-          error: `${this.getDisplayName()} executable not found: ${this.config.command}. Install ${this.getDisplayName()} or set CLI_AGENT_COMMAND to a valid executable path.`,
+          error: `${this.getDisplayName()} executable not found: ${command}. Install ${this.getDisplayName()} and ensure it is available on PATH.`,
         };
       }
 
       if ((result as any).error) {
         return {
           valid: false,
-          error: `Failed to execute ${this.getDisplayName()} (${this.config.command}): ${(result as any).error.message}`,
+          error: `Failed to execute ${this.getDisplayName()} (${command}): ${(result as any).error.message}`,
         };
       }
 

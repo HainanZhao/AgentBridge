@@ -36,16 +36,14 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
   const command = cliAgent.getCommand();
   const args = cliAgent.buildAcpArgs();
   const agentDisplayName = cliAgent.getDisplayName();
+  const commandToken = command.split(/[\\/]/).pop() || command;
+  const stderrPrefixToken = commandToken.toLowerCase().replace(/\s+/g, '-');
   const killGraceMs = cliAgent.getKillGraceMs();
 
   const { source: mcpServersSource, mcpServers } = getMcpServersForSession({
     logInfo,
     getErrorMessage,
-    invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON for temp ACP runner; falling back to agent settings mcpServers',
-    settingsReadFailMessage:
-      'Failed to read agent settings mcpServers for temp ACP runner; falling back to empty array',
-    settingsReadFailAfterInvalidEnvMessage:
-      'Failed to read agent settings mcpServers after invalid env override; using empty array',
+    invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON for temp ACP runner; using empty mcpServers array',
     logDetails: { scheduleId },
   });
   const mcpServerNames = mcpServers
@@ -174,7 +172,7 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
     appendTempStderrTail(rawText);
     const text = rawText.trim();
     if (text) {
-      console.error(`[${agentDisplayName.toLowerCase()}:scheduler:${scheduleId}] ${text}`);
+      console.error(`[${stderrPrefixToken}:scheduler:${scheduleId}] ${text}`);
     }
     tempCollector?.onActivity();
   });
@@ -276,7 +274,9 @@ export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promi
             }
           } catch (_) {}
 
-          await settle(() => reject(new Error(`Scheduler ${agentDisplayName} ACP produced no output for ${noOutputTimeoutMs}ms`)));
+          await settle(() =>
+            reject(new Error(`Scheduler ${agentDisplayName} ACP produced no output for ${noOutputTimeoutMs}ms`)),
+          );
         }, noOutputTimeoutMs);
       };
 

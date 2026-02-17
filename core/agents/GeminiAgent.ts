@@ -1,14 +1,10 @@
-import { BaseCliAgent, type CliAgentCapabilities, type CliAgentConfig } from './BaseCliAgent.js';
+import { BaseCliAgent, type CliAgentCapabilities } from './BaseCliAgent.js';
 
 /**
  * Gemini CLI agent implementation.
  * Supports Google's Gemini CLI with ACP (Agent Communication Protocol).
  */
 export class GeminiAgent extends BaseCliAgent {
-  constructor(config: CliAgentConfig) {
-    super(config);
-  }
-
   getCommand(): string {
     return this.config.command;
   }

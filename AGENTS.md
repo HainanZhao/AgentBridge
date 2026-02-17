@@ -37,10 +37,6 @@ CLI_AGENT_TIMEOUT_MS=1200000
 CLI_AGENT_NO_OUTPUT_TIMEOUT_MS=300000
 ACP_STREAM_STDOUT=false
 ACP_DEBUG_STREAM=false
-
-# Legacy Gemini-specific settings (still supported for backward compatibility)
-# GEMINI_TIMEOUT_MS=1200000
-# GEMINI_NO_OUTPUT_TIMEOUT_MS=300000
 ```
 
 ## Run Locally
@@ -88,18 +84,11 @@ Canonical config/env key mapping is documented in [README.md](README.md) under â
 | `TYPING_INTERVAL_MS` | No | 4000 | Interval (in milliseconds) for refreshing typing status |
 | `STREAM_UPDATE_INTERVAL_MS` | No | 5000 | Interval (in milliseconds) between progressive response message updates |
 | `CLI_AGENT` | No | gemini | CLI agent type to use (`gemini` or `opencode`) |
-| `CLI_AGENT_COMMAND` | No | *(auto)* | CLI agent command executable. Auto-set based on `CLI_AGENT` if not specified |
 | `CLI_AGENT_TIMEOUT_MS` | No | 1200000 | Overall timeout for a single CLI agent run |
 | `CLI_AGENT_NO_OUTPUT_TIMEOUT_MS` | No | 300000 | Idle timeout; aborts if CLI agent emits no output for this duration |
 | `CLI_AGENT_KILL_GRACE_MS` | No | 5000 | Grace period after SIGTERM before escalating CLI agent child process shutdown to SIGKILL |
 | `CLI_AGENT_APPROVAL_MODE` | No | yolo | CLI agent approval mode (`default`, `auto_edit`, `yolo`, `plan`) |
 | `CLI_AGENT_MODEL` | No | - | CLI agent model override passed to the CLI |
-| `GEMINI_TIMEOUT_MS` | No | 1200000 | **[Deprecated]** Use `CLI_AGENT_TIMEOUT_MS`. Overall timeout for a single Gemini CLI run |
-| `GEMINI_NO_OUTPUT_TIMEOUT_MS` | No | 300000 | **[Deprecated]** Use `CLI_AGENT_NO_OUTPUT_TIMEOUT_MS`. Idle timeout for Gemini |
-| `GEMINI_KILL_GRACE_MS` | No | 5000 | **[Deprecated]** Use `CLI_AGENT_KILL_GRACE_MS`. Grace period for Gemini |
-| `GEMINI_APPROVAL_MODE` | No | yolo | **[Deprecated]** Use `CLI_AGENT_APPROVAL_MODE`. Gemini approval mode |
-| `GEMINI_MODEL` | No | - | **[Deprecated]** Use `CLI_AGENT_MODEL`. Gemini model override |
-| `GEMINI_COMMAND` | No | gemini | **[Deprecated]** Use `CLI_AGENT_COMMAND`. Gemini CLI command |
 | `ACP_PERMISSION_STRATEGY` | No | allow_once | Auto-select ACP permission option kind (`allow_once`, `reject_once`, `cancelled`) |
 | `ACP_STREAM_STDOUT` | No | false | Writes raw ACP text chunks to stdout as they arrive |
 | `ACP_DEBUG_STREAM` | No | false | Writes structured ACP chunk timing/count debug logs |
@@ -219,8 +208,8 @@ See [doc/SCHEDULER.md](doc/SCHEDULER.md) for complete API details.
 
 ### Timeout Tuning
 
-- `CLI_AGENT_TIMEOUT_MS` (or legacy `GEMINI_TIMEOUT_MS`): hard cap for total request time (recommended: `1200000`)
-- `CLI_AGENT_NO_OUTPUT_TIMEOUT_MS` (or legacy `GEMINI_NO_OUTPUT_TIMEOUT_MS`): fail fast if output stalls (recommended: `300000`)
+- `CLI_AGENT_TIMEOUT_MS`: hard cap for total request time (recommended: `1200000`)
+- `CLI_AGENT_NO_OUTPUT_TIMEOUT_MS`: fail fast if output stalls (recommended: `300000`)
 - Set `CLI_AGENT_NO_OUTPUT_TIMEOUT_MS=0` to disable idle timeout
 
 ### Response Length Limit
@@ -259,7 +248,9 @@ which opencode  # for OpenCode
 Or check your configured CLI agent:
 
 ```bash
-which <your_cli_agent_command>
+which gemini
+# or
+which opencode
 ```
 
 2. Verify ACP support:

@@ -1,16 +1,16 @@
-import { BaseCliAgent, type CliAgentCapabilities, type CliAgentConfig } from './BaseCliAgent.js';
+import { BaseCliAgent, type CliAgentCapabilities } from './BaseCliAgent.js';
 
 /**
  * OpenCode CLI agent implementation.
  * Supports OpenCode with ACP (Agent Communication Protocol).
  */
 export class OpencodeAgent extends BaseCliAgent {
-  constructor(config: CliAgentConfig) {
-    super(config);
-  }
-
   getCommand(): string {
     return this.config.command;
+  }
+
+  buildAcpArgs(): string[] {
+    return ['acp'];
   }
 
   getDisplayName(): string {

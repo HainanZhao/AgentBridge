@@ -49,6 +49,8 @@ export function createAcpRuntime({
 
   const agentCommand = cliAgent.getCommand();
   const agentDisplayName = cliAgent.getDisplayName();
+  const commandToken = agentCommand.split(/[\\/]/).pop() || agentCommand;
+  const stderrPrefixToken = commandToken.toLowerCase().replace(/\s+/g, '-');
   const killGraceMs = cliAgent.getKillGraceMs();
 
   let agentProcess: any = null;
@@ -218,10 +220,7 @@ export function createAcpRuntime({
       const { source: mcpServersSource, mcpServers } = getMcpServersForSession({
         logInfo,
         getErrorMessage,
-        invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON; falling back to agent settings mcpServers',
-        settingsReadFailMessage: 'Failed to read agent settings mcpServers; falling back to empty array',
-        settingsReadFailAfterInvalidEnvMessage:
-          'Failed to read agent settings mcpServers after invalid env override; using empty array',
+        invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON; using empty mcpServers array',
       });
       const mcpServerNames = mcpServers
         .map((server) => {
@@ -248,7 +247,7 @@ export function createAcpRuntime({
         appendAgentStderrTail(rawText);
         const text = rawText.trim();
         if (text) {
-          console.error(`[${agentDisplayName.toLowerCase()}] ${text}`);
+          console.error(`[${stderrPrefixToken}] ${text}`);
         }
         if (activePromptCollector) {
           activePromptCollector.onActivity();
@@ -485,7 +484,9 @@ export function createAcpRuntime({
           if (result?.stopReason === 'cancelled' && !fullResponse) {
             failOnce(
               new Error(
-                manualAbortRequested ? `${agentDisplayName} ACP prompt was aborted by user` : `${agentDisplayName} ACP prompt was cancelled`,
+                manualAbortRequested
+                  ? `${agentDisplayName} ACP prompt was aborted by user`
+                  : `${agentDisplayName} ACP prompt was cancelled`,
               ),
             );
             return;
