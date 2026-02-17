@@ -99,8 +99,7 @@ Canonical config/env key mapping is documented in [README.md](README.md) under â
 | `CONVERSATION_HISTORY_MAX_ENTRIES` | No | 100 | Maximum number of conversation entries to keep (FIFO rotation) |
 | `CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY` | No | 2000 | Maximum characters per conversation entry (truncates longer messages) |
 | `CONVERSATION_HISTORY_MAX_TOTAL_CHARS` | No | 8000 | Maximum total characters to inject into prompt context |
-| `CONVERSATION_HISTORY_RECAP_TOP_K` | No | 4 | Number of relevant historical entries selected for recap via similarity ranking |
-| `CONVERSATION_HISTORY_MAX_RECENT_ENTRIES` | No | 5 | Legacy fallback recap size used when `CONVERSATION_HISTORY_RECAP_TOP_K` is unset |
+| `CONVERSATION_HISTORY_RECAP_TOP_K` | No | 3 | Number of relevant historical entries selected for recap via similarity ranking |
 | `CONVERSATION_SEMANTIC_RECALL_ENABLED` | No | true | Enable/disable semantic recap retrieval using local embeddings (`node-llama-cpp`) |
 | `CONVERSATION_SEMANTIC_MODEL_PATH` | No | hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf | Model path or `hf:` URI used for local embedding generation |
 | `CONVERSATION_SEMANTIC_STORE_PATH` | No | ~/.clawless/conversation-semantic-memory.db | Persistent semantic embedding SQLite file path |

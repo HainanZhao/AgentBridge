@@ -92,8 +92,7 @@ The system is intentionally capped in multiple places:
 
 ### Recap scope controls
 
-- `CONVERSATION_HISTORY_RECAP_TOP_K` (default `4`)
-- `CONVERSATION_HISTORY_MAX_RECENT_ENTRIES` (legacy fallback when top-k is unset)
+- `CONVERSATION_HISTORY_RECAP_TOP_K` (default `3`)
 
 ## Defaults and Override Model
 

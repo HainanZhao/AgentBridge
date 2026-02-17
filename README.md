@@ -274,7 +274,6 @@ Clawless supports both JSON config keys and environment variables for runtime se
 | `conversationHistoryMaxCharsPerEntry` | `CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY` |
 | `conversationHistoryMaxTotalChars` | `CONVERSATION_HISTORY_MAX_TOTAL_CHARS` |
 | `conversationHistoryRecapTopK` | `CONVERSATION_HISTORY_RECAP_TOP_K` |
-| `conversationHistoryMaxRecentEntries` | `CONVERSATION_HISTORY_MAX_RECENT_ENTRIES` |
 | `conversationSemanticRecallEnabled` | `CONVERSATION_SEMANTIC_RECALL_ENABLED` |
 | `conversationSemanticModelPath` | `CONVERSATION_SEMANTIC_MODEL_PATH` |
 | `conversationSemanticStorePath` | `CONVERSATION_SEMANTIC_STORE_PATH` |
@@ -285,7 +284,6 @@ Clawless supports both JSON config keys and environment variables for runtime se
 
 Notes:
 - Uppercase env-style keys can also be used directly inside `config.json` if preferred.
-- `CONVERSATION_HISTORY_MAX_RECENT_ENTRIES` is kept as a backward-compatible fallback when `CONVERSATION_HISTORY_RECAP_TOP_K` is not set.
 - Semantic recall is optional and enabled by default; it uses `node-llama-cpp` local embeddings and falls back to TF-IDF recap if embedding recall is unavailable.
 
 ### Run In Background
