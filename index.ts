@@ -41,6 +41,16 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+function expandHomePath(value: string): string {
+  if (!value || value === '~') {
+    return os.homedir();
+  }
+  if (value.startsWith('~/')) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
+
 const MESSAGING_PLATFORM = (process.env.MESSAGING_PLATFORM || 'telegram').trim().toLowerCase();
 const SUPPORTED_PLATFORMS = new Set(['telegram', 'slack']);
 
@@ -87,9 +97,11 @@ const ACP_DEBUG_STREAM = String(process.env.ACP_DEBUG_STREAM || '').toLowerCase(
 const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '60000', 10);
 const ACP_PREWARM_RETRY_MS = parseInt(process.env.ACP_PREWARM_RETRY_MS || '30000', 10);
 const GEMINI_KILL_GRACE_MS = parseInt(process.env.GEMINI_KILL_GRACE_MS || '5000', 10);
-const AGENT_BRIDGE_HOME = process.env.AGENT_BRIDGE_HOME || path.join(os.homedir(), '.clawless');
-const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'MEMORY.md');
-const SCHEDULES_FILE_PATH = process.env.SCHEDULES_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'schedules.json');
+const AGENT_BRIDGE_HOME = expandHomePath(process.env.AGENT_BRIDGE_HOME || path.join(os.homedir(), '.clawless'));
+const MEMORY_FILE_PATH = expandHomePath(process.env.MEMORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'MEMORY.md'));
+const SCHEDULES_FILE_PATH = expandHomePath(
+  process.env.SCHEDULES_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'schedules.json'),
+);
 const CALLBACK_CHAT_STATE_FILE_PATH = path.join(AGENT_BRIDGE_HOME, 'callback-chat-state.json');
 const MEMORY_MAX_CHARS = parseInt(process.env.MEMORY_MAX_CHARS || '12000', 10);
 const CALLBACK_HOST = process.env.CALLBACK_HOST || 'localhost';
@@ -100,8 +112,9 @@ const CALLBACK_MAX_BODY_BYTES = parseInt(process.env.CALLBACK_MAX_BODY_BYTES || 
 // Conversation history configuration
 const CONVERSATION_HISTORY_ENABLED =
   String(process.env.CONVERSATION_HISTORY_ENABLED || 'true').toLowerCase() === 'true';
-const CONVERSATION_HISTORY_FILE_PATH =
-  process.env.CONVERSATION_HISTORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-history.jsonl');
+const CONVERSATION_HISTORY_FILE_PATH = expandHomePath(
+  process.env.CONVERSATION_HISTORY_FILE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-history.jsonl'),
+);
 const CONVERSATION_HISTORY_MAX_ENTRIES = parseInt(process.env.CONVERSATION_HISTORY_MAX_ENTRIES || '100', 10);
 const CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY = parseInt(
   process.env.CONVERSATION_HISTORY_MAX_CHARS_PER_ENTRY || '2000',
@@ -114,8 +127,9 @@ const CONVERSATION_SEMANTIC_RECALL_ENABLED =
 const CONVERSATION_SEMANTIC_MODEL_PATH =
   process.env.CONVERSATION_SEMANTIC_MODEL_PATH ||
   'hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf';
-const CONVERSATION_SEMANTIC_STORE_PATH =
-  process.env.CONVERSATION_SEMANTIC_STORE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-semantic-memory.db');
+const CONVERSATION_SEMANTIC_STORE_PATH = expandHomePath(
+  process.env.CONVERSATION_SEMANTIC_STORE_PATH || path.join(AGENT_BRIDGE_HOME, 'conversation-semantic-memory.db'),
+);
 const CONVERSATION_SEMANTIC_MAX_ENTRIES = parseInt(process.env.CONVERSATION_SEMANTIC_MAX_ENTRIES || '1000', 10);
 const CONVERSATION_SEMANTIC_MAX_CHARS_PER_ENTRY = parseInt(
   process.env.CONVERSATION_SEMANTIC_MAX_CHARS_PER_ENTRY || '4000',
