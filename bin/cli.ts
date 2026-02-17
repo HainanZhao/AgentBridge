@@ -94,7 +94,7 @@ const DEFAULT_CONFIG_TEMPLATE = {
   conversationHistoryMaxEntries: 100,
   conversationHistoryMaxCharsPerEntry: 2000,
   conversationHistoryMaxTotalChars: 8000,
-  conversationHistoryRecapTopK: 4,
+  conversationHistoryRecapTopK: 3,
   conversationSemanticRecallEnabled: true,
   conversationSemanticModelPath: 'hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf',
   conversationSemanticStorePath: '~/.clawless/conversation-semantic-memory.db',
@@ -122,7 +122,8 @@ Config precedence:
 
 function parseArgs(argv: string[]) {
   const result = {
-    configPath: process.env.CLAWLESS_CONFIG || DEFAULT_CONFIG_PATH,
+    configPath:
+      process.env.CLAWLESS_CONFIG || DEFAULT_CONFIG_PATH,
     help: false,
     openConfigTui: false,
   };
@@ -136,9 +137,9 @@ function parseArgs(argv: string[]) {
     }
 
     if (arg === '--config') {
+      result.openConfigTui = true;
       const value = argv[index + 1];
       if (!value || value.startsWith('-')) {
-        result.openConfigTui = true;
         continue;
       }
 

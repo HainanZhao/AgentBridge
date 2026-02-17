@@ -10,6 +10,7 @@ type ConfigField = {
   description: string;
   valueType: 'string' | 'number' | 'boolean' | 'stringArray' | 'enum';
   enumValues?: string[];
+  isSecret?: boolean;
   isRequired: (config: Record<string, unknown>) => boolean;
   isVisible: (config: Record<string, unknown>) => boolean;
   order: number;
@@ -31,6 +32,7 @@ const CONFIG_FIELDS: ConfigField[] = [
     label: 'telegramToken',
     description: 'Telegram bot token from BotFather.',
     valueType: 'string',
+    isSecret: true,
     isRequired: (config) => String(config.messagingPlatform || 'telegram') === 'telegram',
     isVisible: (config) => String(config.messagingPlatform || 'telegram') === 'telegram',
     order: 2,
@@ -49,6 +51,7 @@ const CONFIG_FIELDS: ConfigField[] = [
     label: 'slackBotToken',
     description: 'Slack bot token (xoxb-...).',
     valueType: 'string',
+    isSecret: true,
     isRequired: (config) => String(config.messagingPlatform || 'telegram') === 'slack',
     isVisible: (config) => String(config.messagingPlatform || 'telegram') === 'slack',
     order: 4,
@@ -58,6 +61,7 @@ const CONFIG_FIELDS: ConfigField[] = [
     label: 'slackSigningSecret',
     description: 'Slack signing secret.',
     valueType: 'string',
+    isSecret: true,
     isRequired: (config) => String(config.messagingPlatform || 'telegram') === 'slack',
     isVisible: (config) => String(config.messagingPlatform || 'telegram') === 'slack',
     order: 5,
@@ -76,6 +80,7 @@ const CONFIG_FIELDS: ConfigField[] = [
     label: 'slackAppToken',
     description: 'Optional Slack Socket Mode app token.',
     valueType: 'string',
+    isSecret: true,
     isRequired: () => false,
     isVisible: (config) => String(config.messagingPlatform || 'telegram') === 'slack',
     order: 7,
@@ -141,13 +146,43 @@ const CONFIG_FIELDS: ConfigField[] = [
     label: 'callbackAuthToken',
     description: 'Optional token for callback/API authentication.',
     valueType: 'string',
+    isSecret: true,
     isRequired: () => false,
     isVisible: () => true,
     order: 26,
   },
 ];
 
+function maskSecret(text: string): string {
+  if (!text) {
+    return '';
+  }
+
+  if (text.length <= 4) {
+    return '*'.repeat(text.length);
+  }
+
+  return `${text.slice(0, 2)}${'*'.repeat(Math.max(4, text.length - 4))}${text.slice(-2)}`;
+}
+
 function formatFieldValue(value: unknown, field: ConfigField): string {
+  if (field.valueType === 'stringArray') {
+    return Array.isArray(value) ? value.join(', ') : '';
+  }
+  if (field.valueType === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const text = String(value);
+  if (field.isSecret) {
+    return maskSecret(text);
+  }
+  return text;
+}
+
+function rawFieldValue(value: unknown, field: ConfigField): string {
   if (field.valueType === 'stringArray') {
     return Array.isArray(value) ? value.join(', ') : '';
   }
@@ -250,9 +285,17 @@ export async function runConfigTui(
   resolveConfigPath: (configPath: string) => string,
 ): Promise<TuiResult> {
   const absolutePath = resolveConfigPath(configPath);
-  const existingConfig = fs.existsSync(absolutePath)
-    ? (JSON.parse(fs.readFileSync(absolutePath, 'utf8')) as Record<string, unknown>)
-    : {};
+  let existingConfig: Record<string, unknown> = {};
+  if (fs.existsSync(absolutePath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existingConfig = parsed as Record<string, unknown>;
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to parse config JSON at ${absolutePath}: ${error.message}`);
+    }
+  }
 
   const baseConfig = {
     ...defaultConfigTemplate,
@@ -465,7 +508,7 @@ export async function runConfigTui(
       return;
     }
 
-    const currentValue = formatFieldValue(baseConfig[field.key], field);
+    const currentValue = rawFieldValue(baseConfig[field.key], field);
 
     prompt.input(`Edit ${field.label}`, currentValue, (_error, value) => {
       if (typeof value === 'string') {
