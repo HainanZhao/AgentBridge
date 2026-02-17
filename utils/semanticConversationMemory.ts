@@ -282,7 +282,7 @@ export class SemanticConversationMemory {
           throw new Error('node-llama-cpp does not expose resolveModelFile()');
         }
 
-        const llama = await getLlama();
+        const llama = await getLlama({ logLevel: 'error' });
         const modelDirectory = path.join(path.dirname(this.config.storePath), 'models');
         const resolvedModelPath = await resolveModelFile(this.config.modelPath, modelDirectory);
         const model = await llama.loadModel({
