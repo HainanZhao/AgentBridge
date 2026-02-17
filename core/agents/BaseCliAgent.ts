@@ -4,6 +4,8 @@
  * (e.g., Gemini CLI, OpenCode, etc.) through a common interface.
  */
 
+import { spawnSync } from 'node:child_process';
+
 export interface CliAgentConfig {
   command: string;
   approvalMode?: string;
@@ -68,8 +70,38 @@ export abstract class BaseCliAgent {
 
   /**
    * Validate that the agent CLI is available and working
+   * Default implementation checks if the command exists and can be executed
    */
-  abstract validate(): { valid: boolean; error?: string };
+  validate(): { valid: boolean; error?: string } {
+    try {
+      const result = spawnSync(this.config.command, ['--version'], {
+        stdio: 'ignore',
+        timeout: 10000,
+        killSignal: 'SIGKILL',
+      });
+
+      if ((result as any).error?.code === 'ENOENT') {
+        return {
+          valid: false,
+          error: `${this.getDisplayName()} executable not found: ${this.config.command}. Install ${this.getDisplayName()} or set CLI_AGENT_COMMAND to a valid executable path.`,
+        };
+      }
+
+      if ((result as any).error) {
+        return {
+          valid: false,
+          error: `Failed to execute ${this.getDisplayName()} (${this.config.command}): ${(result as any).error.message}`,
+        };
+      }
+
+      return { valid: true };
+    } catch (error: any) {
+      return {
+        valid: false,
+        error: `Failed to validate ${this.getDisplayName()}: ${error.message}`,
+      };
+    }
+  }
 
   /**
    * Get the grace period for process termination

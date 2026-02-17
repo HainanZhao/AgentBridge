@@ -26,7 +26,7 @@ export function createCliAgent(agentType: AgentType, config: CliAgentConfig): Ba
  * Validate agent type from string
  */
 export function validateAgentType(value: string): AgentType {
-  const normalized = value.toLowerCase().trim();
+  const normalized = value.trim().toLowerCase();
   if (!SUPPORTED_AGENTS.includes(normalized as AgentType)) {
     throw new Error(
       `Invalid CLI_AGENT value: ${value}. Supported values: ${SUPPORTED_AGENTS.join(', ')}`,
