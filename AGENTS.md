@@ -30,7 +30,7 @@ TELEGRAM_TOKEN=your_bot_token_here
 # CLI Agent Selection (default: gemini)
 CLI_AGENT=gemini
 # CLI_AGENT=opencode
-# CLI_AGENT=claude (requires: npm install @zed-industries/claude-agent-acp)
+# CLI_AGENT=claude
 
 # CLI Agent settings
 TYPING_INTERVAL_MS=4000
@@ -354,7 +354,8 @@ To add support for a new ACP-capable CLI agent:
 
 2. Add the agent to `core/agents/agentFactory.ts`:
    ```typescript
-   export type AgentType = 'gemini' | 'opencode' | 'claude' | 'mynewagent';
+   export const SUPPORTED_AGENTS = ['gemini', 'opencode', 'claude', 'mynewagent'] as const;
+   export type AgentType = (typeof SUPPORTED_AGENTS)[number];
    
    export function createCliAgent(agentType: AgentType, config: CliAgentConfig): BaseCliAgent {
      switch (agentType) {
@@ -366,14 +367,15 @@ To add support for a new ACP-capable CLI agent:
          return new ClaudeCodeAgent(config);
        case 'mynewagent':
          return new MyNewAgent(config);
-       // ...
      }
    }
    ```
 
 3. Export the new agent from `core/agents/index.ts`
 
-4. Set `CLI_AGENT=mynewagent` in configuration
+4. Add the agent type to `SUPPORTED_AGENTS` in `core/agents/agentFactory.ts` (this also automatically updates the config TUI since it imports from there)
+
+5. Set `CLI_AGENT=mynewagent` in configuration
 
 The agent abstraction handles all the runtime integration automatically.
 

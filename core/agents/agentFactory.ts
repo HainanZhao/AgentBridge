@@ -3,9 +3,8 @@ import { GeminiAgent } from './GeminiAgent.js';
 import { OpencodeAgent } from './OpencodeAgent.js';
 import { ClaudeCodeAgent } from './ClaudeCodeAgent.js';
 
-export type AgentType = 'gemini' | 'opencode' | 'claude';
-
-export const SUPPORTED_AGENTS: AgentType[] = ['gemini', 'opencode', 'claude'];
+export const SUPPORTED_AGENTS = ['gemini', 'opencode', 'claude'] as const;
+export type AgentType = (typeof SUPPORTED_AGENTS)[number];
 
 /**
  * Factory function to create CLI agent instances based on type

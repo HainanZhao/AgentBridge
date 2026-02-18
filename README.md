@@ -156,7 +156,7 @@ The bridge:
 - **A local ACP-capable agent CLI** installed and configured:
   - **Gemini CLI** (default) - Follow [installation instructions](https://github.com/google/generative-ai-cli)
   - **OpenCode** - An alternative ACP-capable CLI agent (ensure `opencode` is in your PATH)
-  - **Claude Code** - Anthropic's Claude Code CLI (ensure `claude` is in your PATH, requires `npm install @zed-industries/claude-agent-acp`)
+  - **Claude Code** - Anthropic's Claude Code CLI (ensure `claude` is in your PATH)
 - **Platform credentials** (choose one):
   - **Telegram**: Bot Token from [@BotFather](https://t.me/BotFather)
   - **Slack**: Bot Token, Signing Secret, and optionally App Token from [api.slack.com/apps](https://api.slack.com/apps)
