@@ -54,7 +54,7 @@ export function createMessageQueueProcessor({
     return new Promise<void>((resolve, reject) => {
       const requestId = ++messageSequence;
       messageQueue.push({ requestId, messageContext, resolve, reject });
-      
+
       const queueLength = messageQueue.length;
       if (queueLength > 1) {
         logInfo('Message enqueued', { requestId, queueLength });

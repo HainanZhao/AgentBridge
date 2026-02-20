@@ -109,15 +109,15 @@ export async function runPromptWithCli(options: TempAcpRunnerOptions): Promise<s
       if (settled) return;
       settled = true;
       logInfo(`Scheduler temp ${agentDisplayName} prompt timed out`, { scheduleId, timeoutMs });
-      
+
       await terminateProcessGracefully(
-        tempProcess as unknown as ChildProcessWithoutNullStreams, 
-        agentDisplayName, 
-        killGraceMs, 
-        logInfo, 
-        { scheduleId }
+        tempProcess as unknown as ChildProcessWithoutNullStreams,
+        agentDisplayName,
+        killGraceMs,
+        logInfo,
+        { scheduleId },
       );
-      
+
       reject(new Error(`Scheduler ${agentDisplayName} prompt timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
