@@ -42,39 +42,8 @@ export async function processSingleTelegramMessage({
   let finalizedViaLiveMessage = false;
   let startingLiveMessage: Promise<void> | null = null;
   let promptCompleted = false;
-
-  // Classification Step
-  try {
-    const classificationPrompt = `[SYSTEM: CLASSIFICATION MODE]
-Analyze the following user request and determine if it should be handled as a "Quick Task" (immediate response, simple question) or an "Async Task" (long-running research, coding task, waiting for something).
-
-- QUICK: Simple questions, clarifications, simple file reads, setting reminders, "hello", "who are you".
-- ASYNC: "Research X", "Monitor Y for Z time", "Scrape this site", "Refactor this codebase", "Check logs for X".
-
-Respond ONLY with the word "QUICK" or "ASYNC".
-
-User Request: "${messageContext.text}"`;
-
-    logInfo('Classifying message', { requestId: messageRequestId });
-    // Use runAcpPrompt without chunk callback for classification
-    const classificationResult = await runAcpPrompt(classificationPrompt);
-    const isAsync = classificationResult.trim().toUpperCase().includes('ASYNC');
-
-    logInfo('Message classification result', { requestId: messageRequestId, isAsync, raw: classificationResult });
-
-    if (isAsync) {
-      await scheduleAsyncJob(messageContext.text, messageContext.chatId);
-      await messageContext.sendText("I've scheduled this as a background task. I'll notify you when it's done.");
-      
-      stopTypingIndicator();
-      return;
-    }
-  } catch (error: any) {
-    logInfo('Classification failed, defaulting to QUICK', {
-      requestId: messageRequestId,
-      error: getErrorMessage(error),
-    });
-  }
+  let isAsyncModeDetected = false;
+  let isStreamingStarted = false;
 
   const previewText = () => {
     if (previewBuffer.length <= maxResponseLength) {
@@ -84,7 +53,7 @@ User Request: "${messageContext.text}"`;
   };
 
   const flushPreview = async (force = false, allowStart = true) => {
-    if (finalizedViaLiveMessage) {
+    if (finalizedViaLiveMessage || isAsyncModeDetected) {
       return;
     }
 
@@ -147,7 +116,6 @@ User Request: "${messageContext.text}"`;
   };
 
   // Create a debounced flush function using lodash
-  // This will only execute after no chunks have been received for streamUpdateIntervalMs
   const debouncedFlush = debounce(
     async () => {
       await flushPreview(true);
@@ -157,7 +125,7 @@ User Request: "${messageContext.text}"`;
   );
 
   const finalizeCurrentMessage = async () => {
-    if (!liveMessageId) {
+    if (!liveMessageId || isAsyncModeDetected) {
       return;
     }
 
@@ -193,9 +161,45 @@ User Request: "${messageContext.text}"`;
   };
 
   try {
-    const fullResponse = await runAcpPrompt(messageContext.text, async (chunk) => {
+    const smartPrompt = `[SYSTEM: HYBRID MODE]
+Instructions:
+1. Analyze the User Request below.
+2. If it is a "Quick Task" (simple question, clarification, "hello", short lookup): Answer it immediately and directly.
+3. If it is an "Async Task" (long research, scraping, coding, waiting, monitoring): Respond ONLY with the exact string "ASYNC_MODE".
+
+User Request: "${messageContext.text}"`;
+
+    const fullResponse = await runAcpPrompt(smartPrompt, async (chunk) => {
+      // If we already detected async mode, suppress all output
+      if (isAsyncModeDetected) return;
+
       const now = Date.now();
       const gapSinceLastChunk = lastChunkAt > 0 ? now - lastChunkAt : 0;
+
+      // Buffer the chunk
+      const potentialBuffer = previewBuffer + chunk;
+
+      // Check for ASYNC_MODE pattern in the beginning
+      // We only check this if we haven't started streaming to the user yet
+      if (!isStreamingStarted) {
+        // If the buffer is still small, it might be the start of "ASYNC_MODE"
+        // or the start of "Hello there".
+        // "ASYNC_MODE" is 10 chars.
+        if (potentialBuffer.length < 20) {
+           if ("ASYNC_MODE".startsWith(potentialBuffer) || potentialBuffer.startsWith("ASYNC_MODE")) {
+             // It *could* be async mode, or it is async mode.
+             // Don't flush yet.
+             previewBuffer = potentialBuffer;
+             if (potentialBuffer.trim() === 'ASYNC_MODE') {
+               isAsyncModeDetected = true;
+             }
+             return;
+           }
+        }
+        
+        // If we are here, it's NOT Async Mode (or we passed the check).
+        isStreamingStarted = true;
+      }
 
       if (gapSinceLastChunk > messageGapThresholdMs && liveMessageId && previewBuffer.trim()) {
         await finalizeCurrentMessage();
@@ -207,6 +211,19 @@ User Request: "${messageContext.text}"`;
     });
     promptCompleted = true;
 
+    // Check final response for strict ASYNC_MODE (in case it came in one big chunk)
+    if (fullResponse.trim() === 'ASYNC_MODE') {
+      isAsyncModeDetected = true;
+    }
+
+    if (isAsyncModeDetected) {
+      logInfo('Async mode detected, scheduling background job', { requestId: messageRequestId });
+      await scheduleAsyncJob(messageContext.text, messageContext.chatId);
+      await messageContext.sendText("I've scheduled this as a background task. I'll notify you when it's done.");
+      return;
+    }
+
+    // Normal completion
     debouncedFlush.cancel();
     await flushPreview(true);
 
