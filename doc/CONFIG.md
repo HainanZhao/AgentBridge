@@ -1,6 +1,93 @@
-# Configuration Reference
+# Configuration & Setup Guide
 
-This document lists `config.json` keys, defaults, and what each setting controls.
+## Quick Setup
+
+1. Run `clawless` once to generate `~/.clawless/config.json`
+2. Edit the file with your platform token and whitelist
+3. Run `clawless` again
+
+## Telegram Setup
+
+### Getting a Bot Token
+
+1. Open Telegram and search [@BotFather](https://t.me/BotFather)
+2. Send `/newbot`
+3. Follow prompts to name your bot
+4. Copy the token provided
+
+### Whitelist Configuration
+
+The bot only accepts messages from whitelisted users. Add your Telegram username:
+
+```json
+{
+  "messagingPlatform": "telegram",
+  "telegramToken": "<your-token>",
+  "telegramWhitelist": ["your_username"]
+}
+```
+
+- Use your Telegram username (without `@`)
+- Max 10 users recommended for security
+- **Required**: Startup fails if whitelist is empty
+
+## Slack Setup
+
+### Getting Credentials
+
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Enable Socket Mode and get an App Token
+3. Get Bot Token from OAuth & Permissions
+4. Get Signing Secret from Basic Information
+
+### OAuth Scopes
+
+If using email-based allowlist, add these scopes:
+- `users:read`
+- `users:read.email`
+
+### Configuration
+
+```json
+{
+  "messagingPlatform": "slack",
+  "slackBotToken": "xoxb-...",
+  "slackSigningSecret": "...",
+  "slackAppToken": "xapp-...",
+  "slackWhitelist": ["U01234567"]
+}
+```
+
+- Whitelist uses Slack user IDs (not usernames)
+- Max 10 users recommended for security
+- **Required**: Startup fails if whitelist is empty
+
+## Config TUI
+
+Run `clawless --config` to open the interactive editor:
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate |
+| `Enter` | Edit value |
+| `←` / `→` | Change enum values |
+| `s` | Save and exit |
+| `q` | Quit without saving |
+
+## Environment Variables
+
+All config keys can be overridden via environment variables (uppercase, underscore-separated):
+
+```bash
+CLI_AGENT=opencode
+TELEGRAM_WHITELIST=user1,user2
+```
+
+---
+
+## Configuration Reference
+
+All `config.json` keys, defaults, and meanings:
 
 | Key | Default | Meaning |
 |---|---|---|
