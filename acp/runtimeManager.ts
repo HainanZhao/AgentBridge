@@ -184,25 +184,30 @@ export function createAcpRuntime({
 
       activePromptCollector.onActivity();
 
+      const updateType = params.update?.sessionUpdate;
+      const contentType = params.update?.content?.type;
+
       // Handle thinking/thought chunks (internal reasoning, not displayed to user)
-      if (params.update?.sessionUpdate === 'agent_thought_chunk') {
-        const thoughtText = params.update?.content?.text || '';
+      if (updateType === 'agent_thought_chunk') {
         if (acpDebugStream) {
+          const thoughtText = params.update?.content?.text || '';
           logInfo('ACP thought chunk', {
             sessionId: acpSessionId,
             thoughtLength: thoughtText.length,
             thoughtPreview: thoughtText.slice(0, 100),
           });
         }
-        return; // Don't append thinking to the response
+        return;
       }
 
-      // Handle regular message chunks
-      if (params.update?.sessionUpdate === 'agent_message_chunk' && params.update?.content?.type === 'text') {
+      // ONLY handle regular message chunks of type text
+      if (updateType === 'agent_message_chunk' && contentType === 'text') {
         const chunkText = params.update.content.text;
-        activePromptCollector.append(chunkText);
-        if (acpStreamStdout && chunkText) {
-          process.stdout.write(chunkText);
+        if (chunkText) {
+          activePromptCollector.append(chunkText);
+          if (acpStreamStdout) {
+            process.stdout.write(chunkText);
+          }
         }
       }
     },
@@ -550,7 +555,8 @@ export function createAcpRuntime({
     const updatePrompt = `[SYSTEM: CONTEXT UPDATE]
 The following is the result of a background task you previously scheduled. 
 Please incorporate this into your current context. 
-Do not respond to this message now. 
+DO NOT respond to this message now. 
+DO NOT generate any visible output or message chunks.
 Acknowledge silently and wait for the next user input.
 
 Result:

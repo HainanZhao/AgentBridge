@@ -12,6 +12,19 @@ export interface ScheduledJobHandlerDeps {
   appendContextToAgent?: (text: string) => Promise<void>;
 }
 
+function formatBackgroundTaskPrompt(userRequest: string): string {
+  return `[SYSTEM: BACKGROUND TASK]
+Perform the following task immediately. 
+Do not ask any follow-up questions. 
+Provide the final result directly.
+
+User Request: "${userRequest}"`;
+}
+
+function formatBackgroundTaskResult(request: string, result: string): string {
+  return `✅ Background task completed.\n\nOriginal Request: "${request}"\n\nResult:\n${result}`;
+}
+
 export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
   const {
     logInfo,
@@ -28,14 +41,9 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
     logInfo('handleScheduledJob called', { scheduleId: schedule.id, message: schedule.message, type: schedule.type });
 
     try {
-      const jobPrompt = `[SYSTEM: BACKGROUND TASK]
-Perform the following task immediately. 
-Do not ask any follow-up questions. 
-Provide the final result directly.
-
-User Request: "${schedule.message}"`;
-
+      const jobPrompt = formatBackgroundTaskPrompt(schedule.message);
       const promptForAgent = await buildPromptWithMemory(jobPrompt);
+
       logInfo('Scheduler prompt payload sent to agent', {
         scheduleId: schedule.id,
         prompt: promptForAgent,
@@ -44,15 +52,13 @@ User Request: "${schedule.message}"`;
       const response = await runScheduledPromptWithTempAcp(promptForAgent, schedule.id);
 
       if (schedule.type === 'async_conversation') {
-        // For async conversation, send the result directly back to the user
         const chatId = schedule.metadata?.chatId;
-
         if (!chatId) {
           logInfo('Missing chatId for async conversation job', { scheduleId: schedule.id });
           return;
         }
 
-        const formattedResponse = `✅ Background task completed.\n\nOriginal Request: "${schedule.message}"\n\nResult:\n${response}`;
+        const formattedResponse = formatBackgroundTaskResult(schedule.message, response);
         await sendTextToChat(chatId, normalizeOutgoingText(formattedResponse));
         logInfo('Async conversation result sent directly to chat', { scheduleId: schedule.id, chatId });
 
@@ -61,11 +67,11 @@ User Request: "${schedule.message}"`;
         }
 
         if (appendContextToAgent) {
-          const contextUpdate = `Background task result for "${schedule.message}":\n\n${response}`;
+          const contextUpdate = formatBackgroundTaskResult(schedule.message, response);
           void appendContextToAgent(contextUpdate);
         }
       } else {
-        // Standard cron job behavior: send result directly to chat
+        // Standard cron job behavior
         const targetChatId = resolveTargetChatId();
         if (targetChatId) {
           await sendTextToChat(targetChatId, normalizeOutgoingText(response));
@@ -80,19 +86,12 @@ User Request: "${schedule.message}"`;
         error: getErrorMessage(error),
       });
 
-      // Handle error reporting
-      if (schedule.type === 'async_conversation') {
-        const chatId = schedule.metadata?.chatId;
-        if (chatId) {
-          const errorMessage = `❌ Background task failed: ${schedule.description || schedule.message}\n\nError: ${getErrorMessage(error)}`;
-          await sendTextToChat(chatId, normalizeOutgoingText(errorMessage));
-        }
-      } else {
-        const targetChatId = resolveTargetChatId();
-        if (targetChatId) {
-          const errorMessage = `❌ Scheduled task failed: ${schedule.description || schedule.message}\n\nError: ${getErrorMessage(error)}`;
-          await sendTextToChat(targetChatId, normalizeOutgoingText(errorMessage));
-        }
+      const chatId = schedule.type === 'async_conversation' ? schedule.metadata?.chatId : resolveTargetChatId();
+
+      if (chatId) {
+        const errorDetail = getErrorMessage(error);
+        const errorMessage = `❌ ${schedule.type === 'async_conversation' ? 'Background task' : 'Scheduled task'} failed: ${schedule.description || schedule.message}\n\nError: ${errorDetail}`;
+        await sendTextToChat(chatId, normalizeOutgoingText(errorMessage));
       }
     }
   };
