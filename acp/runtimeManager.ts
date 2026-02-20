@@ -538,7 +538,7 @@ export function createAcpRuntime({
   };
 
   const appendContext = async (text: string) => {
-    if (!hasHealthyAcpRuntime()) {
+    if (!hasHealthyAcpRuntime() || hasActiveAcpPrompt()) {
       return;
     }
 
@@ -559,10 +559,16 @@ ${text}`;
     try {
       // We call prompt but we don't wait for a long response
       // ACP prompt will usually return quickly if the agent is instructed not to respond
-      await acpConnection.prompt({
-        sessionId: acpSessionId,
-        prompt: [{ type: 'text', text: updatePrompt }],
-      });
+      void acpConnection
+        .prompt({
+          sessionId: acpSessionId,
+          prompt: [{ type: 'text', text: updatePrompt }],
+        })
+        .catch((error: any) => {
+          logInfo('Context update fire-and-forget failed', {
+            error: getErrorMessage(error),
+          });
+        });
     } catch (error: any) {
       logInfo('Failed to append context to ACP session', {
         error: getErrorMessage(error),

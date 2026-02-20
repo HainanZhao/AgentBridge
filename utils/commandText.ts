@@ -24,6 +24,12 @@ export function normalizeOutgoingText(text: unknown) {
   return String(text || '').trim();
 }
 
+/**
+ * Generates a random short identifier using base36.
+ * Provides 8 characters of entropy, suitable for job references and correlation IDs.
+ *
+ * @returns A random 8-character string (e.g., "5g7h2k9z")
+ */
 export function generateShortId() {
-  return Math.random().toString(36).substring(2, 6);
+  return Math.random().toString(36).substring(2, 10);
 }

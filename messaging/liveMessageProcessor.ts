@@ -279,13 +279,11 @@ User Request: "${messageContext.text}"`;
       // Send the full agent response (including [MODE: ASYNC] prefix) back to user
       let finalMsg = _fullResponse.trim();
       if (!finalMsg) {
-        finalMsg = `[MODE: ASYNC] I've scheduled this task (Ref: ${jobRef}). I'll notify you when it's done.`;
-      } else {
-        // Append the reference to the agent's message if it doesn't already have one
-        if (!finalMsg.includes('Ref:')) {
-          finalMsg = `${finalMsg} (Ref: ${jobRef})`;
-        }
+        finalMsg = `[MODE: ASYNC] I've scheduled this task. I'll notify you when it's done.`;
       }
+
+      // Always append reference as a footer for clarity
+      finalMsg = `${finalMsg}\n\nReference: ${jobRef}`;
 
       await messageContext.sendText(finalMsg);
       return;

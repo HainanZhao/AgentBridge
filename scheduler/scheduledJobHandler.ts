@@ -8,7 +8,6 @@ export interface ScheduledJobHandlerDeps {
   resolveTargetChatId: () => string | null;
   sendTextToChat: (chatId: string | number, text: string) => Promise<void>;
   normalizeOutgoingText: (text: unknown) => string;
-  enqueueMessage: (messageContext: any) => Promise<void>;
   onConversationComplete?: (userMessage: string, botResponse: string, chatId: string) => void;
   appendContextToAgent?: (text: string) => Promise<void>;
 }

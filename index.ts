@@ -262,8 +262,6 @@ function validateCliAgentOrExit() {
   }
 }
 
-let globalEnqueueMessage: (messageContext: any) => Promise<void>;
-
 const handleScheduledJob = createScheduledJobHandler({
   logInfo,
   buildPromptWithMemory,
@@ -271,13 +269,6 @@ const handleScheduledJob = createScheduledJobHandler({
   resolveTargetChatId: () => resolveChatId(lastIncomingChatId),
   sendTextToChat: (chatId, text) => messagingClient.sendTextToChat(chatId, text),
   normalizeOutgoingText,
-  enqueueMessage: async (ctx) => {
-    if (globalEnqueueMessage) {
-      await globalEnqueueMessage(ctx);
-    } else {
-      logInfo('Warning: globalEnqueueMessage not yet initialized when handling scheduled job');
-    }
-  },
   onConversationComplete: CONVERSATION_HISTORY_ENABLED
     ? (userMessage, botResponse, chatId) => {
         const appendedEntry = appendConversationEntry(conversationHistoryConfig, {
@@ -425,8 +416,6 @@ const { enqueueMessage, getQueueLength } = createMessageQueueProcessor({
   logInfo,
   getErrorMessage,
 });
-
-globalEnqueueMessage = enqueueMessage;
 
 registerTelegramHandlers({
   messagingClient,
