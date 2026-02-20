@@ -5,6 +5,8 @@ import { getErrorMessage } from '../utils/error.js';
 
 export interface ScheduleConfig {
   id: string;
+  type?: 'cron' | 'async_conversation';
+  metadata?: Record<string, any>;
   cronExpression?: string;
   oneTime?: boolean;
   runAt?: Date;
@@ -24,6 +26,8 @@ export interface ScheduleJob {
 
 interface PersistedScheduleConfig {
   id: string;
+  type?: 'cron' | 'async_conversation';
+  metadata?: Record<string, any>;
   cronExpression?: string;
   oneTime?: boolean;
   runAt?: string;
@@ -41,6 +45,8 @@ export interface CronSchedulerOptions {
 }
 
 export interface UpdateScheduleInput {
+  type?: 'cron' | 'async_conversation';
+  metadata?: Record<string, any>;
   message?: string;
   description?: string;
   cronExpression?: string;
@@ -74,6 +80,10 @@ export class CronScheduler {
   }
 
   private validateScheduleConfig(config: ScheduleConfig): void {
+    if (config.type === 'async_conversation') {
+      return;
+    }
+
     if (config.oneTime) {
       if (!config.runAt) {
         throw new Error('One-time schedules require a runAt date');
@@ -105,6 +115,12 @@ export class CronScheduler {
     }
 
     const { config } = job;
+
+    if (config.type === 'async_conversation') {
+      // Async conversations are executed immediately via executeOneTimeJobImmediately
+      // No runtime configuration needed
+      return;
+    }
 
     if (config.oneTime && config.runAt) {
       if (!config.active) {
@@ -143,6 +159,8 @@ export class CronScheduler {
   private toPersistedSchedule(config: ScheduleConfig): PersistedScheduleConfig {
     return {
       id: config.id,
+      type: config.type,
+      metadata: config.metadata,
       cronExpression: config.cronExpression,
       oneTime: config.oneTime,
       runAt: config.runAt ? config.runAt.toISOString() : undefined,
@@ -157,6 +175,8 @@ export class CronScheduler {
   private parsePersistedSchedule(config: PersistedScheduleConfig): ScheduleConfig {
     return {
       id: config.id,
+      type: config.type,
+      metadata: config.metadata,
       cronExpression: config.cronExpression,
       oneTime: config.oneTime,
       runAt: config.runAt ? new Date(config.runAt) : undefined,
@@ -175,7 +195,9 @@ export class CronScheduler {
 
     try {
       fs.mkdirSync(path.dirname(this.persistenceFilePath), { recursive: true });
-      const schedules = Array.from(this.jobs.values()).map((job) => this.toPersistedSchedule(job.config));
+      const schedules = Array.from(this.jobs.values())
+        .filter((job) => job.config.type !== 'async_conversation') // Don't persist async conversation jobs
+        .map((job) => this.toPersistedSchedule(job.config));
       fs.writeFileSync(this.persistenceFilePath, `${JSON.stringify({ schedules }, null, 2)}\n`, 'utf8');
     } catch (error) {
       this.logInfo('Failed to persist schedules', {
@@ -278,6 +300,41 @@ export class CronScheduler {
     this.persistSchedules();
 
     return job.config;
+  }
+
+  /**
+   * Execute a one-time job immediately without persistence
+   */
+  async executeOneTimeJobImmediately(
+    message: string,
+    description?: string,
+    metadata?: Record<string, any>,
+    forcedId?: string,
+  ): Promise<string> {
+    const config: ScheduleConfig = {
+      id: forcedId || this.generateId(),
+      type: 'async_conversation',
+      metadata,
+      oneTime: true,
+      runAt: new Date(),
+      message,
+      description,
+      createdAt: new Date(),
+      active: true,
+    };
+
+    this.logInfo('executeOneTimeJobImmediately called', { scheduleId: config.id, message: config.message });
+
+    // Directly execute the job callback without adding to jobs map or persisting
+    try {
+      this.logInfo('About to call jobCallback', { scheduleId: config.id });
+      await this.jobCallback(config);
+      this.logInfo('jobCallback completed', { scheduleId: config.id });
+    } catch (error: any) {
+      console.error(`[CronScheduler] Immediate job ${config.id} execution failed: ${getErrorMessage(error)}`);
+    }
+
+    return config.id;
   }
 
   /**

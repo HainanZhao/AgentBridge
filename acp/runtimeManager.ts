@@ -184,11 +184,30 @@ export function createAcpRuntime({
 
       activePromptCollector.onActivity();
 
-      if (params.update?.sessionUpdate === 'agent_message_chunk' && params.update?.content?.type === 'text') {
+      const updateType = params.update?.sessionUpdate;
+      const contentType = params.update?.content?.type;
+
+      // Handle thinking/thought chunks (internal reasoning, not displayed to user)
+      if (updateType === 'agent_thought_chunk') {
+        if (acpDebugStream) {
+          const thoughtText = params.update?.content?.text || '';
+          logInfo('ACP thought chunk', {
+            sessionId: acpSessionId,
+            thoughtLength: thoughtText.length,
+            thoughtPreview: thoughtText.slice(0, 100),
+          });
+        }
+        return;
+      }
+
+      // ONLY handle regular message chunks of type text
+      if (updateType === 'agent_message_chunk' && contentType === 'text') {
         const chunkText = params.update.content.text;
-        activePromptCollector.append(chunkText);
-        if (acpStreamStdout && chunkText) {
-          process.stdout.write(chunkText);
+        if (chunkText) {
+          activePromptCollector.append(chunkText);
+          if (acpStreamStdout) {
+            process.stdout.write(chunkText);
+          }
         }
       }
     },
@@ -523,9 +542,50 @@ export function createAcpRuntime({
     });
   };
 
+  const appendContext = async (text: string) => {
+    if (!hasHealthyAcpRuntime() || hasActiveAcpPrompt()) {
+      return;
+    }
+
+    logInfo('Appending context to ACP session', {
+      sessionId: acpSessionId,
+      textLength: text.length,
+    });
+
+    const updatePrompt = `[SYSTEM: CONTEXT UPDATE]
+The following is the result of a background task you previously scheduled. 
+Please incorporate this into your current context. 
+DO NOT respond to this message now. 
+DO NOT generate any visible output or message chunks.
+Acknowledge silently and wait for the next user input.
+
+Result:
+${text}`;
+
+    try {
+      // We call prompt but we don't wait for a long response
+      // ACP prompt will usually return quickly if the agent is instructed not to respond
+      void acpConnection
+        .prompt({
+          sessionId: acpSessionId,
+          prompt: [{ type: 'text', text: updatePrompt }],
+        })
+        .catch((error: any) => {
+          logInfo('Context update fire-and-forget failed', {
+            error: getErrorMessage(error),
+          });
+        });
+    } catch (error: any) {
+      logInfo('Failed to append context to ACP session', {
+        error: getErrorMessage(error),
+      });
+    }
+  };
+
   return {
     buildAgentAcpArgs,
     runAcpPrompt,
+    appendContext,
     scheduleAcpPrewarm,
     shutdownAcpRuntime,
     cancelActiveAcpPrompt,
