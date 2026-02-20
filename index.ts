@@ -8,7 +8,7 @@ import { processSingleTelegramMessage } from './messaging/liveMessageProcessor.j
 import { createMessageQueueProcessor } from './messaging/messageQueue.js';
 import { registerTelegramHandlers } from './messaging/registerTelegramHandlers.js';
 import { createCallbackServer } from './core/callbackServer.js';
-import { runPromptWithTempAcp } from './acp/tempAcpRunner.js';
+import { runPromptWithCli } from './acp/tempAcpRunner.js';
 import { createAcpRuntime } from './acp/runtimeManager.js';
 import { buildPermissionResponse, noOpAcpFileOperation } from './acp/clientHelpers.js';
 import { createCliAgent, validateAgentType, SUPPORTED_AGENTS, type AgentType } from './core/agents/index.js';
@@ -278,6 +278,21 @@ const handleScheduledJob = createScheduledJobHandler({
       logInfo('Warning: globalEnqueueMessage not yet initialized when handling scheduled job');
     }
   },
+  onConversationComplete: CONVERSATION_HISTORY_ENABLED
+    ? (userMessage, botResponse, chatId) => {
+        const appendedEntry = appendConversationEntry(conversationHistoryConfig, {
+          chatId,
+          userMessage,
+          botResponse,
+          platform: MESSAGING_PLATFORM,
+        });
+
+        if (appendedEntry && semanticConversationMemory.isEnabled) {
+          void semanticConversationMemory.indexEntry(appendedEntry);
+        }
+      }
+    : undefined,
+  appendContextToAgent: (text) => acpRuntime.appendContext(text),
 });
 
 const cronScheduler = new CronScheduler(handleScheduledJob, {
@@ -342,7 +357,7 @@ function setupGracefulShutdown() {
 
   for (const signal of shutdownSignals) {
     process.once(signal, () => {
-      console.log(`Received ${signal}, stopping bot...`);
+      logInfo(`Received ${signal}, stopping bot...`);
       cronScheduler.shutdown();
       stopCallbackServer();
       messagingClient.stop(signal);
@@ -352,7 +367,7 @@ function setupGracefulShutdown() {
 }
 
 async function runScheduledPromptWithTempAcp(promptForAgent: string, scheduleId: string): Promise<string> {
-  return runPromptWithTempAcp({
+  return runPromptWithCli({
     scheduleId,
     promptForAgent,
     cliAgent,
@@ -378,8 +393,16 @@ const { enqueueMessage, getQueueLength } = createMessageQueueProcessor({
       messageGapThresholdMs: MESSAGE_GAP_THRESHOLD_MS,
       acpDebugStream: ACP_DEBUG_STREAM,
       runAcpPrompt,
-      scheduleAsyncJob: async (message, chatId) => {
-        await cronScheduler.executeOneTimeJobImmediately(message, 'Async User Task', { chatId });
+      scheduleAsyncJob: async (message, chatId, jobRef) => {
+        logInfo('scheduleAsyncJob called', { message, chatId, jobRef });
+        const scheduledId = await cronScheduler.executeOneTimeJobImmediately(
+          message,
+          'Async User Task',
+          { chatId },
+          jobRef,
+        );
+        logInfo('scheduleAsyncJob completed', { message, chatId, jobId: scheduledId });
+        return scheduledId;
       },
       logInfo,
       getErrorMessage,
@@ -477,11 +500,11 @@ messagingClient
     });
 
     if (MESSAGING_PLATFORM === 'telegram') {
-      console.log(`✅ Telegram authorization enabled. Authorized usernames: ${TELEGRAM_WHITELIST.join(', ')}`);
+      logInfo(`✅ Telegram authorization enabled. Authorized usernames: ${TELEGRAM_WHITELIST.join(', ')}`);
     }
 
     if (MESSAGING_PLATFORM === 'slack') {
-      console.log(`✅ Slack authorization enabled. Authorized principals (user IDs): ${SLACK_WHITELIST.join(', ')}`);
+      logInfo(`✅ Slack authorization enabled. Authorized principals (user IDs): ${SLACK_WHITELIST.join(', ')}`);
     }
 
     acpRuntime.scheduleAcpPrewarm('post-launch');
@@ -499,11 +522,11 @@ messagingClient
   })
   .catch((error: any) => {
     if (MESSAGING_PLATFORM === 'telegram' && error?.response?.error_code === 404 && error?.on?.method === 'getMe') {
-      console.error('Failed to launch bot: Telegram token is invalid (getMe returned 404 Not Found).');
-      console.error('Update TELEGRAM_TOKEN in ~/.clawless/config.json or env and restart.');
+      logInfo('Failed to launch bot: Telegram token is invalid (getMe returned 404 Not Found).');
+      logInfo('Update TELEGRAM_TOKEN in ~/.clawless/config.json or env and restart.');
       process.exit(1);
     }
 
-    console.error('Failed to launch bot:', error);
+    logInfo('Failed to launch bot:', error);
     process.exit(1);
   });

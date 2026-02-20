@@ -1,12 +1,5 @@
 import { spawn } from 'node:child_process';
-import { Readable, Writable } from 'node:stream';
-import * as acp from '@agentclientprotocol/sdk';
-import { buildPermissionResponse, noOpAcpFileOperation } from './clientHelpers.js';
-import { getErrorMessage } from '../utils/error.js';
-import { getMcpServersForSession } from './mcpServerHelpers.js';
 import type { BaseCliAgent } from '../core/agents/index.js';
-
-const ACP_DEBUG_STREAM = String(process.env.ACP_DEBUG_STREAM || '').toLowerCase() === 'true';
 
 export interface TempAcpRunnerOptions {
   scheduleId: string;
@@ -14,340 +7,84 @@ export interface TempAcpRunnerOptions {
   cliAgent: BaseCliAgent;
   cwd: string;
   timeoutMs: number;
-  noOutputTimeoutMs: number;
-  permissionStrategy: string;
+  // Kept for interface compatibility with existing call sites if any, though unused in runPromptWithCli
+  noOutputTimeoutMs?: number;
+  permissionStrategy?: string;
   stderrTailMaxChars?: number;
   logInfo: (message: string, details?: unknown) => void;
 }
 
-export async function runPromptWithTempAcp(options: TempAcpRunnerOptions): Promise<string> {
-  const {
-    scheduleId,
-    promptForAgent,
-    cliAgent,
-    cwd,
-    timeoutMs,
-    noOutputTimeoutMs,
-    permissionStrategy,
-    stderrTailMaxChars = 4000,
-    logInfo,
-  } = options;
+/**
+ * Executes a single prompt using the CLI's standard prompt mode (-p).
+ * This is simpler than ACP and suitable for one-shot background tasks.
+ */
+export async function runPromptWithCli(options: TempAcpRunnerOptions): Promise<string> {
+  const { scheduleId, promptForAgent, cliAgent, cwd, timeoutMs, logInfo } = options;
 
   const command = cliAgent.getCommand();
-  const args = cliAgent.buildAcpArgs();
+  const args = cliAgent.buildPromptArgs(promptForAgent);
   const agentDisplayName = cliAgent.getDisplayName();
   const commandToken = command.split(/[\\/]/).pop() || command;
   const stderrPrefixToken = commandToken.toLowerCase().replace(/\s+/g, '-');
-  const killGraceMs = cliAgent.getKillGraceMs();
-
-  const { source: mcpServersSource, mcpServers } = getMcpServersForSession({
-    logInfo,
-    getErrorMessage,
-    invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON for temp ACP runner; using empty mcpServers array',
-    logDetails: { scheduleId },
-  });
-  const mcpServerNames = mcpServers
-    .map((server) => {
-      if (server && typeof server === 'object' && 'name' in server) {
-        return String((server as { name?: unknown }).name ?? '');
-      }
-
-      return '';
-    })
-    .filter((name) => name.length > 0);
 
   const tempProcess = spawn(command, args, {
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
     cwd,
   });
 
-  logInfo(`Scheduler temp ${agentDisplayName} ACP process started`, {
+  logInfo(`Scheduler temp ${agentDisplayName} process started (prompt mode)`, {
     scheduleId,
     pid: tempProcess.pid,
     command,
-    args,
+    args: args.slice(0, -1).concat('[PROMPT]'), // Hide prompt in logs
   });
 
-  let tempConnection: any = null;
-  let tempSessionId: string | null = null;
-  let tempCollector: { onActivity: () => void; append: (chunk: string) => void } | null = null;
-  let tempStderrTail = '';
-  let noOutputTimeout: NodeJS.Timeout | null = null;
-  let overallTimeout: NodeJS.Timeout | null = null;
-  let cleanedUp = false;
+  return new Promise<string>((resolve, reject) => {
+    let stdoutData = '';
+    let stderrData = '';
+    let settled = false;
 
-  const terminateProcessGracefully = () => {
-    return new Promise<void>((resolve) => {
-      if (!tempProcess || tempProcess.killed || tempProcess.exitCode !== null) {
-        resolve();
-        return;
-      }
+    const overallTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      logInfo(`Scheduler temp ${agentDisplayName} prompt timed out`, { scheduleId, timeoutMs });
+      tempProcess.kill('SIGKILL');
+      reject(new Error(`Scheduler ${agentDisplayName} prompt timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
-      let settled = false;
-
-      const finalize = (reason: string) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        logInfo(`Scheduler temp ${agentDisplayName} process termination finalized`, {
-          scheduleId,
-          pid: tempProcess.pid,
-          reason,
-        });
-        resolve();
-      };
-
-      tempProcess.once('exit', () => finalize('exit'));
-
-      logInfo(`Scheduler temp ${agentDisplayName} process SIGTERM`, {
-        scheduleId,
-        pid: tempProcess.pid,
-        graceMs: killGraceMs,
-      });
-      tempProcess.kill('SIGTERM');
-
-      setTimeout(
-        () => {
-          if (settled || tempProcess.killed || tempProcess.exitCode !== null) {
-            finalize('already-exited');
-            return;
-          }
-
-          logInfo(`Scheduler temp ${agentDisplayName} process SIGKILL escalation`, {
-            scheduleId,
-            pid: tempProcess.pid,
-          });
-          tempProcess.kill('SIGKILL');
-          finalize('sigkill');
-        },
-        Math.max(0, killGraceMs),
-      );
+    tempProcess.stdout.on('data', (chunk: Buffer) => {
+      stdoutData += chunk.toString();
     });
-  };
 
-  const appendTempStderrTail = (text: string) => {
-    tempStderrTail = `${tempStderrTail}${text}`;
-    if (tempStderrTail.length > stderrTailMaxChars) {
-      tempStderrTail = tempStderrTail.slice(-stderrTailMaxChars);
-    }
-  };
+    tempProcess.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stderrData += text;
+      if (text.trim()) {
+        console.error(`[${stderrPrefixToken}:scheduler:${scheduleId}] ${text.trim()}`);
+      }
+    });
 
-  const clearTimers = () => {
-    if (noOutputTimeout) {
-      clearTimeout(noOutputTimeout);
-      noOutputTimeout = null;
-    }
-    if (overallTimeout) {
+    tempProcess.on('error', (error: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(overallTimeout);
-      overallTimeout = null;
-    }
-  };
+      logInfo(`Scheduler temp ${agentDisplayName} process error`, { scheduleId, error: error.message });
+      reject(error);
+    });
 
-  const cleanup = async () => {
-    if (cleanedUp) {
-      return;
-    }
-    cleanedUp = true;
-    clearTimers();
+    tempProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(overallTimeout);
 
-    try {
-      if (tempConnection && tempSessionId) {
-        await tempConnection.cancel({ sessionId: tempSessionId });
+      logInfo(`Scheduler temp ${agentDisplayName} process exited`, { scheduleId, code, signal });
+
+      if (code === 0) {
+        resolve(stdoutData.trim() || 'No response received.');
+      } else {
+        const errorMsg = `Agent exited with code ${code}${signal ? ` (signal ${signal})` : ''}. ${stderrData.slice(-500)}`;
+        reject(new Error(errorMsg));
       }
-    } catch (_) {}
-
-    if (!tempProcess.killed && tempProcess.exitCode === null) {
-      await terminateProcessGracefully();
-    }
-
-    logInfo(`Scheduler temp ${agentDisplayName} ACP process cleanup complete`, {
-      scheduleId,
-      pid: tempProcess.pid,
-    });
-  };
-
-  tempProcess.stderr.on('data', (chunk: Buffer) => {
-    const rawText = chunk.toString();
-    appendTempStderrTail(rawText);
-    const text = rawText.trim();
-    if (text) {
-      console.error(`[${stderrPrefixToken}:scheduler:${scheduleId}] ${text}`);
-    }
-    tempCollector?.onActivity();
-  });
-
-  tempProcess.on('error', (error: Error) => {
-    logInfo(`Scheduler temp ${agentDisplayName} ACP process error`, {
-      scheduleId,
-      pid: tempProcess.pid,
-      error: error.message,
     });
   });
-
-  tempProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-    logInfo(`Scheduler temp ${agentDisplayName} ACP process exited`, {
-      scheduleId,
-      pid: tempProcess.pid,
-      code,
-      signal,
-    });
-  });
-
-  try {
-    const input = Writable.toWeb(tempProcess.stdin) as unknown as WritableStream<Uint8Array>;
-    const output = Readable.toWeb(tempProcess.stdout) as unknown as ReadableStream<Uint8Array>;
-    const stream = acp.ndJsonStream(input, output);
-
-    const tempClient = {
-      async requestPermission(params: any) {
-        return buildPermissionResponse(params?.options, permissionStrategy);
-      },
-      async sessionUpdate(params: any) {
-        if (!tempCollector || params.sessionId !== tempSessionId) {
-          return;
-        }
-
-        tempCollector.onActivity();
-
-        if (params.update?.sessionUpdate === 'agent_message_chunk' && params.update?.content?.type === 'text') {
-          const chunkText = params.update.content.text;
-          tempCollector.append(chunkText);
-        }
-      },
-      async readTextFile(_params: any) {
-        return noOpAcpFileOperation(_params);
-      },
-      async writeTextFile(_params: any) {
-        return noOpAcpFileOperation(_params);
-      },
-    };
-
-    tempConnection = new acp.ClientSideConnection(() => tempClient, stream);
-
-    await tempConnection.initialize({
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: {},
-    });
-
-    const session = await tempConnection.newSession({
-      cwd,
-      mcpServers,
-    });
-    tempSessionId = session.sessionId;
-
-    logInfo('Scheduler temp ACP session ready', {
-      scheduleId,
-      sessionId: tempSessionId,
-      mcpServersMode: mcpServersSource,
-      mcpServersCount: mcpServers.length,
-      mcpServerNames,
-    });
-
-    return await new Promise<string>((resolve, reject) => {
-      let response = '';
-      let settled = false;
-      const startedAt = Date.now();
-      let chunkCount = 0;
-      let firstChunkAt: number | null = null;
-
-      const settle = async (handler: () => void) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        await cleanup();
-        handler();
-      };
-
-      const refreshNoOutputTimer = () => {
-        if (!noOutputTimeoutMs || noOutputTimeoutMs <= 0) {
-          return;
-        }
-        if (noOutputTimeout) {
-          clearTimeout(noOutputTimeout);
-        }
-        noOutputTimeout = setTimeout(async () => {
-          try {
-            if (tempConnection && tempSessionId) {
-              await tempConnection.cancel({ sessionId: tempSessionId });
-            }
-          } catch (_) {}
-
-          await settle(() =>
-            reject(new Error(`Scheduler ${agentDisplayName} ACP produced no output for ${noOutputTimeoutMs}ms`)),
-          );
-        }, noOutputTimeoutMs);
-      };
-
-      overallTimeout = setTimeout(async () => {
-        try {
-          if (tempConnection && tempSessionId) {
-            await tempConnection.cancel({ sessionId: tempSessionId });
-          }
-        } catch (_) {}
-
-        await settle(() => reject(new Error(`Scheduler ${agentDisplayName} ACP timed out after ${timeoutMs}ms`)));
-      }, timeoutMs);
-
-      tempCollector = {
-        onActivity: refreshNoOutputTimer,
-        append: (chunk: string) => {
-          refreshNoOutputTimer();
-          chunkCount += 1;
-          if (!firstChunkAt) {
-            firstChunkAt = Date.now();
-          }
-          if (ACP_DEBUG_STREAM) {
-            logInfo('Scheduler ACP chunk received', {
-              scheduleId,
-              chunkIndex: chunkCount,
-              chunkLength: chunk.length,
-              elapsedMs: Date.now() - startedAt,
-              bufferLengthBeforeAppend: response.length,
-            });
-          }
-          response += chunk;
-        },
-      };
-
-      refreshNoOutputTimer();
-
-      tempConnection
-        .prompt({
-          sessionId: tempSessionId,
-          prompt: [{ type: 'text', text: promptForAgent }],
-        })
-        .then(async (result: any) => {
-          if (ACP_DEBUG_STREAM) {
-            logInfo('Scheduler ACP prompt stop reason', {
-              scheduleId,
-              stopReason: result?.stopReason || '(none)',
-              chunkCount,
-              firstChunkDelayMs: firstChunkAt ? firstChunkAt - startedAt : null,
-              elapsedMs: Date.now() - startedAt,
-              bufferedLength: response.length,
-            });
-          }
-          if (result?.stopReason === 'cancelled' && !response) {
-            await settle(() => reject(new Error(`Scheduler ${agentDisplayName} ACP prompt was cancelled`)));
-            return;
-          }
-
-          await settle(() => resolve(response || 'No response received.'));
-        })
-        .catch(async (error: any) => {
-          await settle(() => reject(new Error(error?.message || `Scheduler ${agentDisplayName} ACP prompt failed`)));
-        });
-    });
-  } catch (error: any) {
-    logInfo(`Scheduler temporary ${agentDisplayName} ACP run failed`, {
-      scheduleId,
-      error: getErrorMessage(error),
-      stderrTail: tempStderrTail || '(empty)',
-    });
-    throw error;
-  } finally {
-    await cleanup();
-  }
 }

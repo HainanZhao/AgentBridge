@@ -9,6 +9,8 @@ export interface ScheduledJobHandlerDeps {
   sendTextToChat: (chatId: string | number, text: string) => Promise<void>;
   normalizeOutgoingText: (text: unknown) => string;
   enqueueMessage: (messageContext: any) => Promise<void>;
+  onConversationComplete?: (userMessage: string, botResponse: string, chatId: string) => void;
+  appendContextToAgent?: (text: string) => Promise<void>;
 }
 
 export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
@@ -19,14 +21,22 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
     resolveTargetChatId,
     sendTextToChat,
     normalizeOutgoingText,
-    enqueueMessage,
+    onConversationComplete,
+    appendContextToAgent,
   } = deps;
 
   return async function handleScheduledJob(schedule: ScheduleConfig): Promise<void> {
-    logInfo('Executing scheduled job', { scheduleId: schedule.id, message: schedule.message, type: schedule.type });
+    logInfo('handleScheduledJob called', { scheduleId: schedule.id, message: schedule.message, type: schedule.type });
 
     try {
-      const promptForAgent = await buildPromptWithMemory(schedule.message);
+      const jobPrompt = `[SYSTEM: BACKGROUND TASK]
+Perform the following task immediately. 
+Do not ask any follow-up questions. 
+Provide the final result directly.
+
+User Request: "${schedule.message}"`;
+
+      const promptForAgent = await buildPromptWithMemory(jobPrompt);
       logInfo('Scheduler prompt payload sent to agent', {
         scheduleId: schedule.id,
         prompt: promptForAgent,
@@ -35,7 +45,7 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
       const response = await runScheduledPromptWithTempAcp(promptForAgent, schedule.id);
 
       if (schedule.type === 'async_conversation') {
-        // For async conversation, queue the result back to the main agent loop
+        // For async conversation, send the result directly back to the user
         const chatId = schedule.metadata?.chatId;
 
         if (!chatId) {
@@ -43,22 +53,18 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
           return;
         }
 
-        const systemMessage = `[System Notification]\nBackground task completed.\n\nOriginal Request: "${schedule.message}"\n\nResult:\n${response}\n\nPlease determine the next step or inform the user.`;
+        const formattedResponse = `✅ Background task completed.\n\nOriginal Request: "${schedule.message}"\n\nResult:\n${response}`;
+        await sendTextToChat(chatId, normalizeOutgoingText(formattedResponse));
+        logInfo('Async conversation result sent directly to chat', { scheduleId: schedule.id, chatId });
 
-        // Mock message context to allow the agent to reply to the user
-        const mockContext = {
-          chatId,
-          text: systemMessage,
-          startTyping: () => () => {}, // No-op
-          startLiveMessage: async () => 'system-msg-id', // No-op
-          updateLiveMessage: async () => {}, // No-op
-          finalizeLiveMessage: async () => {}, // No-op
-          sendText: async (text: string) => sendTextToChat(chatId, normalizeOutgoingText(text)),
-          removeMessage: async () => {}, // No-op
-        };
+        if (onConversationComplete) {
+          onConversationComplete(schedule.message, response, chatId);
+        }
 
-        await enqueueMessage(mockContext);
-        logInfo('Async conversation result enqueued to main agent', { scheduleId: schedule.id, chatId });
+        if (appendContextToAgent) {
+          const contextUpdate = `Background task result for "${schedule.message}":\n\n${response}`;
+          void appendContextToAgent(contextUpdate);
+        }
       } else {
         // Standard cron job behavior: send result directly to chat
         const targetChatId = resolveTargetChatId();
@@ -79,8 +85,8 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
       if (schedule.type === 'async_conversation') {
         const chatId = schedule.metadata?.chatId;
         if (chatId) {
-           const errorMessage = `❌ Background task failed: ${schedule.description || schedule.message}\n\nError: ${getErrorMessage(error)}`;
-           await sendTextToChat(chatId, normalizeOutgoingText(errorMessage));
+          const errorMessage = `❌ Background task failed: ${schedule.description || schedule.message}\n\nError: ${getErrorMessage(error)}`;
+          await sendTextToChat(chatId, normalizeOutgoingText(errorMessage));
         }
       } else {
         const targetChatId = resolveTargetChatId();

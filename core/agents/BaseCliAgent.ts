@@ -59,6 +59,33 @@ export abstract class BaseCliAgent {
   }
 
   /**
+   * Build command-line arguments for standard prompt mode (one-shot)
+   */
+  buildPromptArgs(promptText: string): string[] {
+    const args: string[] = [];
+
+    if (this.config.includeDirectories && this.config.includeDirectories.length > 0) {
+      const includeDirectorySet = new Set(this.config.includeDirectories);
+      for (const includeDirectory of includeDirectorySet) {
+        args.push('--include-directories', includeDirectory);
+      }
+    }
+
+    if (this.config.approvalMode) {
+      args.push('--approval-mode', this.config.approvalMode);
+    }
+
+    if (this.config.model) {
+      args.push('--model', this.config.model);
+    }
+
+    // Always use prompt mode for one-shot execution
+    args.push('-p', promptText);
+
+    return args;
+  }
+
+  /**
    * Get MCP servers to pass to ACP session.
    * Override this in subclasses to provide MCP server configurations.
    * Returns array of MCP server configs in ACP format.

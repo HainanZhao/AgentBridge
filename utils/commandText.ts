@@ -23,3 +23,7 @@ export function isAbortCommand(text: unknown) {
 export function normalizeOutgoingText(text: unknown) {
   return String(text || '').trim();
 }
+
+export function generateShortId() {
+  return Math.random().toString(36).substring(2, 6);
+}

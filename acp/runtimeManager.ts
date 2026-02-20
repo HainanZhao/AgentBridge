@@ -184,6 +184,20 @@ export function createAcpRuntime({
 
       activePromptCollector.onActivity();
 
+      // Handle thinking/thought chunks (internal reasoning, not displayed to user)
+      if (params.update?.sessionUpdate === 'agent_thought_chunk') {
+        const thoughtText = params.update?.content?.text || '';
+        if (acpDebugStream) {
+          logInfo('ACP thought chunk', {
+            sessionId: acpSessionId,
+            thoughtLength: thoughtText.length,
+            thoughtPreview: thoughtText.slice(0, 100),
+          });
+        }
+        return; // Don't append thinking to the response
+      }
+
+      // Handle regular message chunks
       if (params.update?.sessionUpdate === 'agent_message_chunk' && params.update?.content?.type === 'text') {
         const chunkText = params.update.content.text;
         activePromptCollector.append(chunkText);
@@ -523,9 +537,43 @@ export function createAcpRuntime({
     });
   };
 
+  const appendContext = async (text: string) => {
+    if (!hasHealthyAcpRuntime()) {
+      return;
+    }
+
+    logInfo('Appending context to ACP session', {
+      sessionId: acpSessionId,
+      textLength: text.length,
+    });
+
+    const updatePrompt = `[SYSTEM: CONTEXT UPDATE]
+The following is the result of a background task you previously scheduled. 
+Please incorporate this into your current context. 
+Do not respond to this message now. 
+Acknowledge silently and wait for the next user input.
+
+Result:
+${text}`;
+
+    try {
+      // We call prompt but we don't wait for a long response
+      // ACP prompt will usually return quickly if the agent is instructed not to respond
+      await acpConnection.prompt({
+        sessionId: acpSessionId,
+        prompt: [{ type: 'text', text: updatePrompt }],
+      });
+    } catch (error: any) {
+      logInfo('Failed to append context to ACP session', {
+        error: getErrorMessage(error),
+      });
+    }
+  };
+
   return {
     buildAgentAcpArgs,
     runAcpPrompt,
+    appendContext,
     scheduleAcpPrewarm,
     shutdownAcpRuntime,
     cancelActiveAcpPrompt,

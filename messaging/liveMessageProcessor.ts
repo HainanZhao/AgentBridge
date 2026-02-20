@@ -1,4 +1,5 @@
 import { debounce } from 'lodash-es';
+import { generateShortId } from '../utils/commandText.js';
 
 type LogInfoFn = (message: string, details?: unknown) => void;
 
@@ -10,7 +11,7 @@ type ProcessSingleMessageParams = {
   messageGapThresholdMs: number;
   acpDebugStream: boolean;
   runAcpPrompt: (promptText: string, onChunk?: (chunk: string) => void) => Promise<string>;
-  scheduleAsyncJob: (message: string, chatId: string) => Promise<void>;
+  scheduleAsyncJob: (message: string, chatId: string, jobRef: string) => Promise<string>;
   logInfo: LogInfoFn;
   getErrorMessage: (error: unknown, fallbackMessage?: string) => string;
   onConversationComplete?: (userMessage: string, botResponse: string, chatId: string) => void;
@@ -42,10 +43,14 @@ export async function processSingleTelegramMessage({
   let finalizedViaLiveMessage = false;
   let startingLiveMessage: Promise<void> | null = null;
   let promptCompleted = false;
-  let modeDetected = false;
+  let modeDetected = !!messageContext.skipHybridMode;
   let isAsyncMode = false;
   let prefixBuffer = '';
-  const PREFIX_MAX_LEN = 20; // Enough to hold [MODE: QUICK] or [MODE: ASYNC]
+  // No max length needed - we detect prefix in streaming and also check full response at the end
+
+  if (modeDetected) {
+    logInfo('Mode detection skipped due to skipHybridMode flag', { requestId: messageRequestId });
+  }
 
   const previewText = () => {
     if (previewBuffer.length <= maxResponseLength) {
@@ -163,17 +168,30 @@ export async function processSingleTelegramMessage({
   };
 
   try {
-    const smartPrompt = `[SYSTEM: HYBRID MODE]
+    const prompt = modeDetected
+      ? messageContext.text
+      : `[SYSTEM: HYBRID MODE]
 Instructions:
 1. Analyze the User Request below.
-2. Determine if it is "Quick" (answer now) or "Async" (background task).
-3. YOU MUST START YOUR RESPONSE WITH EXACTLY ONE OF THESE PREFIXES:
-   - "[MODE: QUICK] " -> Followed immediately by your answer.
-   - "[MODE: ASYNC] " -> Followed immediately by a brief confirmation message (e.g. "I'll start that background task...").
+2. Determine if it is "Quick" (answer immediately) or "Async" (background task).
+3. Use ASYNC mode if:
+   - The request requires using any tools (e.g., reading files, running commands, searching code)
+   - The task might take longer than 10 seconds
+   - Examples: scanning a repo codebase, running tests, building projects, fetching URLs, processing multiple files
+   - IMPORTANT: If you choose ASYNC mode, DO NOT perform the task now. DO NOT call any tools. Just provide the confirmation message and exit.
+4. Use QUICK mode only for:
+   - Simple questions that can be answered from knowledge
+   - No tools required
+   - Response can be generated in a few seconds
+
+Response Format:
+- "[MODE: QUICK] " followed by your immediate answer
+- "[MODE: ASYNC] " followed by a brief confirmation (e.g. "I'll start that background task...")
 
 User Request: "${messageContext.text}"`;
 
-    const fullResponse = await runAcpPrompt(smartPrompt, async (chunk) => {
+    // Note: fullResponse is unused - we process chunks via the callback instead
+    const _fullResponse = await runAcpPrompt(prompt, async (chunk) => {
       // If we already detected ASYNC mode, we suppress output (we'll handle it at the end)
       // But we still consume the stream to let the prompt finish.
       if (modeDetected && isAsyncMode) return;
@@ -183,30 +201,27 @@ User Request: "${messageContext.text}"`;
 
       if (!modeDetected) {
         prefixBuffer += chunk;
-        
-        // Try to detect prefix
-        if (prefixBuffer.includes('[MODE: QUICK]')) {
+
+        // Try to detect prefix (trim whitespace to handle newlines/spaces before prefix)
+        const trimmedBuffer = prefixBuffer.trim();
+        if (trimmedBuffer.startsWith('[MODE: QUICK]')) {
           modeDetected = true;
           isAsyncMode = false;
+          logInfo('Mode detected via streaming: QUICK', { requestId: messageRequestId });
           // Strip the prefix and any leading whitespace from the buffer
           const content = prefixBuffer.replace(/\[MODE: QUICK\]\s*/, '');
           previewBuffer += content;
-        } else if (prefixBuffer.includes('[MODE: ASYNC]')) {
+        } else if (trimmedBuffer.startsWith('[MODE: ASYNC]')) {
           modeDetected = true;
           isAsyncMode = true;
+          logInfo('Mode detected via streaming: ASYNC', { requestId: messageRequestId });
           // We don't update previewBuffer for ASYNC because we handle it separately
-        } else if (prefixBuffer.length > PREFIX_MAX_LEN) {
-           // Fallback: If we exceeded max length without a valid prefix, assume QUICK (legacy/fallback behavior)
-           // and just dump the whole buffer as content.
-           modeDetected = true;
-           isAsyncMode = false;
-           previewBuffer += prefixBuffer;
-           logInfo('No valid mode prefix detected, falling back to QUICK', { requestId: messageRequestId });
         }
-        
+        // Continue buffering until prefix detected - we'll check full response at the end if not found
+
         // If we just switched to QUICK mode, we might have content to flush
         if (modeDetected && !isAsyncMode) {
-             void debouncedFlush();
+          void debouncedFlush();
         }
         return;
       }
@@ -224,23 +239,55 @@ User Request: "${messageContext.text}"`;
 
     // Handle edge case where the entire response came in one chunk or small enough to handle at end
     if (!modeDetected) {
-        if (prefixBuffer.includes('[MODE: ASYNC]')) {
-            isAsyncMode = true;
-        } else {
-            // Assume Quick
-            // Strip any partial prefix if it exists? No, just use raw.
-            // Actually let's try to clean it if it matches our pattern
-             const content = prefixBuffer.replace(/\[MODE: QUICK\]\s*/, '');
-             previewBuffer = content;
-        }
+      const trimmedBuffer = prefixBuffer.trim();
+      if (trimmedBuffer.startsWith('[MODE: ASYNC]')) {
+        isAsyncMode = true;
         modeDetected = true;
+      } else if (trimmedBuffer.startsWith('[MODE: QUICK]')) {
+        // Strip any prefix if it exists
+        const content = prefixBuffer.replace(/\[MODE: QUICK\]\s*/, '');
+        previewBuffer = content;
+        modeDetected = true;
+      } else {
+        // No valid prefix found in full response - log warning and default to QUICK for backward compatibility
+        logInfo('No valid mode prefix detected in full response, defaulting to QUICK', {
+          requestId: messageRequestId,
+          responsePreview: prefixBuffer.slice(0, 100),
+        });
+        modeDetected = true;
+        isAsyncMode = false;
+        previewBuffer = prefixBuffer;
+      }
     }
 
     if (isAsyncMode) {
-      logInfo('Async mode detected, scheduling background job', { requestId: messageRequestId });
-      // Schedule the original user request, not the agent's confirmation message
-      await scheduleAsyncJob(messageContext.text, messageContext.chatId);
-      await messageContext.sendText("I've scheduled this as a background task. I'll notify you when it's done.");
+      const jobRef = `job_${generateShortId()}`;
+      logInfo('Async mode detected, fire-and-forget background job', {
+        requestId: messageRequestId,
+        jobRef,
+      });
+
+      // Schedule the original user request as fire-and-forget
+      scheduleAsyncJob(messageContext.text, messageContext.chatId, jobRef).catch((error) => {
+        logInfo('Fire-and-forget scheduleAsyncJob failed', {
+          requestId: messageRequestId,
+          jobRef,
+          error: getErrorMessage(error),
+        });
+      });
+
+      // Send the full agent response (including [MODE: ASYNC] prefix) back to user
+      let finalMsg = _fullResponse.trim();
+      if (!finalMsg) {
+        finalMsg = `[MODE: ASYNC] I've scheduled this task (Ref: ${jobRef}). I'll notify you when it's done.`;
+      } else {
+        // Append the reference to the agent's message if it doesn't already have one
+        if (!finalMsg.includes('Ref:')) {
+          finalMsg = `${finalMsg} (Ref: ${jobRef})`;
+        }
+      }
+
+      await messageContext.sendText(finalMsg);
       return;
     }
 

@@ -305,9 +305,14 @@ export class CronScheduler {
   /**
    * Execute a one-time job immediately without persistence
    */
-  async executeOneTimeJobImmediately(message: string, description?: string, metadata?: Record<string, any>): Promise<void> {
+  async executeOneTimeJobImmediately(
+    message: string,
+    description?: string,
+    metadata?: Record<string, any>,
+    forcedId?: string,
+  ): Promise<string> {
     const config: ScheduleConfig = {
-      id: this.generateId(),
+      id: forcedId || this.generateId(),
       type: 'async_conversation',
       metadata,
       oneTime: true,
@@ -318,14 +323,18 @@ export class CronScheduler {
       active: true,
     };
 
-    this.logInfo('Executing immediate one-time job', { scheduleId: config.id, message: config.message });
+    this.logInfo('executeOneTimeJobImmediately called', { scheduleId: config.id, message: config.message });
 
     // Directly execute the job callback without adding to jobs map or persisting
     try {
+      this.logInfo('About to call jobCallback', { scheduleId: config.id });
       await this.jobCallback(config);
+      this.logInfo('jobCallback completed', { scheduleId: config.id });
     } catch (error: any) {
       console.error(`[CronScheduler] Immediate job ${config.id} execution failed: ${getErrorMessage(error)}`);
     }
+
+    return config.id;
   }
 
   /**
