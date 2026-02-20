@@ -52,17 +52,17 @@ Instructions:
 1. Analyze the User Request below.
 2. Determine if it is "Quick" (answer immediately) or "Async" (background task).
 3. Use ASYNC mode if:
-   - The request requires using any tools (e.g., reading files, running commands, searching code)
-   - The task might take longer than 10 seconds
-   - Examples: scanning a repo codebase, running tests, building projects, fetching URLs, processing multiple files
-   - IMPORTANT: If you choose ASYNC mode, DO NOT perform the task now. DO NOT call any tools. Just provide the confirmation message and exit.
-4. Use QUICK mode only for:
-   - Simple questions that can be answered from knowledge
-   - No tools required
-   - Response can be generated in a few seconds
+    - The task is expected to take longer than 10 seconds
+    - Examples: scanning a repo codebase, running tests, building projects, fetching URLs, processing multiple files, complex code analysis
+    - IMPORTANT: If you choose ASYNC mode, DO NOT perform the task now. DO NOT call any tools. Just provide the confirmation message and exit.
+4. Use QUICK mode if:
+    - The task can be completed in under 10 seconds
+    - Simple operations like updating memory, recalling information, short queries
+    - Simple questions that can be answered from knowledge
+    - Tool use is acceptable if it's fast (e.g., reading a single small file, checking a config value)
 
 Response Format:
-- "[MODE: QUICK] " followed by your immediate answer
+- "[MODE: QUICK] " followed by your immediate answer (you may use tools if quick)
 - "[MODE: ASYNC] " followed by a specific task description of what will be done (this text becomes the background agent's instruction — include relevant context such as file paths, flags, or scope from the user request so the background agent has everything it needs)
 
 User Request: "${userRequest}"`;
