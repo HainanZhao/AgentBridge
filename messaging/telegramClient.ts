@@ -1,9 +1,18 @@
 import { Telegraf } from 'telegraf';
 import telegramifyMarkdown from 'telegramify-markdown';
+import { splitIntoSmartChunks } from './messageTruncator.js';
 
 const TELEGRAM_PARSE_MODE = 'MarkdownV2' as const;
 
-function toTelegramMarkdown(text: string): string {
+/**
+ * Escapes characters that are reserved in Telegram's MarkdownV2.
+ * Used as a fallback when Markdown conversion fails or for plain text components.
+ */
+export function escapeMarkdownV2(text: string): string {
+  return String(text || '').replace(/[_*[\]()~`>#+-=|{}.!]/g, '\\$&');
+}
+
+export function toTelegramMarkdown(text: string): string {
   const normalizedText = String(text || '');
   if (!normalizedText) {
     return normalizedText;
@@ -12,30 +21,8 @@ function toTelegramMarkdown(text: string): string {
   try {
     return telegramifyMarkdown(normalizedText, 'escape');
   } catch {
-    return normalizedText;
+    return escapeMarkdownV2(normalizedText);
   }
-}
-
-function splitTextIntoChunks(text: string, maxMessageLength: number): string[] {
-  const normalizedText = String(text || '');
-  if (!normalizedText) {
-    return [''];
-  }
-
-  if (normalizedText.length <= maxMessageLength) {
-    return [normalizedText];
-  }
-
-  const chunks: string[] = [];
-  let start = 0;
-
-  while (start < normalizedText.length) {
-    const end = Math.min(start + maxMessageLength, normalizedText.length);
-    chunks.push(normalizedText.slice(start, end));
-    start = end;
-  }
-
-  return chunks;
 }
 
 class TelegramMessageContext {
@@ -68,10 +55,10 @@ class TelegramMessageContext {
   }
 
   async sendText(text: string) {
-    const formattedText = toTelegramMarkdown(text);
-    const chunks = splitTextIntoChunks(formattedText, this.maxMessageLength);
+    const chunks = splitIntoSmartChunks(text, this.maxMessageLength);
     for (const chunk of chunks) {
-      await this.ctx.reply(chunk, { parse_mode: TELEGRAM_PARSE_MODE });
+      const formattedChunk = toTelegramMarkdown(chunk);
+      await this.ctx.reply(formattedChunk, { parse_mode: TELEGRAM_PARSE_MODE });
     }
   }
 
@@ -89,16 +76,17 @@ class TelegramMessageContext {
   }
 
   async finalizeLiveMessage(messageId: number, text: string) {
-    const finalText = text || 'No response received.';
-    const formattedText = toTelegramMarkdown(finalText);
-    const chunks = splitTextIntoChunks(formattedText, this.maxMessageLength);
+    const defaultResponse = 'No response received.';
+    const finalText = text || defaultResponse;
+    const rawChunks = splitIntoSmartChunks(finalText, this.maxMessageLength);
+    const formattedChunks = rawChunks.map((c) => toTelegramMarkdown(c));
 
     try {
       await this.ctx.telegram.editMessageText(
         this.ctx.chat.id,
         messageId,
         undefined,
-        chunks[0] || 'No response received.',
+        formattedChunks[0] || toTelegramMarkdown(defaultResponse),
         {
           parse_mode: TELEGRAM_PARSE_MODE,
         },
@@ -110,8 +98,8 @@ class TelegramMessageContext {
       }
     }
 
-    for (let index = 1; index < chunks.length; index += 1) {
-      await this.ctx.reply(chunks[index], { parse_mode: TELEGRAM_PARSE_MODE });
+    for (let index = 1; index < formattedChunks.length; index += 1) {
+      await this.ctx.reply(formattedChunks[index], { parse_mode: TELEGRAM_PARSE_MODE });
     }
   }
 
@@ -158,10 +146,10 @@ export class TelegramMessagingClient {
   }
 
   async sendTextToChat(chatId: string | number, text: string) {
-    const formattedText = toTelegramMarkdown(text);
-    const chunks = splitTextIntoChunks(formattedText, this.maxMessageLength);
+    const chunks = splitIntoSmartChunks(text, this.maxMessageLength);
     for (const chunk of chunks) {
-      await this.bot.telegram.sendMessage(chatId, chunk, { parse_mode: TELEGRAM_PARSE_MODE });
+      const formattedChunk = toTelegramMarkdown(chunk);
+      await this.bot.telegram.sendMessage(chatId, formattedChunk, { parse_mode: TELEGRAM_PARSE_MODE });
     }
   }
 

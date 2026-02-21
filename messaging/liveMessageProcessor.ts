@@ -1,6 +1,7 @@
 import { debounce } from 'lodash-es';
 import { generateShortId } from '../utils/commandText.js';
 import { detectConversationMode, wrapHybridPrompt, ConversationMode } from './ModeDetector.js';
+import { smartTruncate } from './messageTruncator.js';
 
 type LogInfoFn = (message: string, details?: unknown) => void;
 
@@ -61,10 +62,7 @@ class LiveMessageManager {
   }
 
   private getPreviewText() {
-    if (this.previewBuffer.length <= this.maxResponseLength) {
-      return this.previewBuffer;
-    }
-    return `${this.previewBuffer.slice(0, this.maxResponseLength - 1)}…`;
+    return smartTruncate(this.previewBuffer, { maxLength: this.maxResponseLength });
   }
 
   async flushPreview(force = false, allowStart = true) {
