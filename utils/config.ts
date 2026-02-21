@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 
-function expandHomePath(value: string): string {
+export function expandHomePath(value: string): string {
   if (!value || value === '~') {
     return os.homedir();
   }

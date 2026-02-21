@@ -19,10 +19,12 @@
 ### 1. Refactor `index.ts` for Modularity
 **Goal**: Break down the "god file" into dedicated bootstrappers.
 **Benefit**: Easier testing and maintenance.
+**Status**: ✅ Implemented in `feat/validated-config`.
 
 ### 2. Validated Configuration (e.g., Zod)
 **Goal**: Replace raw `process.env` with a strict schema validator.
 **Benefit**: Fail-fast on missing config and type safety.
+**Status**: ✅ Implemented in `feat/validated-config`.
 
 ### 3. Comprehensive Test Suite
 **Goal**: Introduce `vitest` or `jest`.
