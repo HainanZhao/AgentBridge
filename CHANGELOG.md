@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-02-21
+
+### Added
+
+- **Validated Configuration with Zod**: All configuration is now validated at startup using Zod schemas, providing clear error messages for missing or invalid environment variables.
+- **Application Refactor**: Extracted initialization logic from `index.ts` into modular component managers (`ClawlessApp`, `AgentManager`, `CallbackServerManager`, `MessagingInitializer`, `SchedulerManager`) for improved maintainability.
+- **Test Suite**: Added Vitest-based unit tests for core utilities and messaging (`config.test.ts`, `commandText.test.ts`, `liveMessageProcessor.test.ts`).
+
+### Fixed
+
+- Fixed mode detector logic for hybrid mode detection.
+- Fixed configuration not being re-evaluated after loading the config file (early dotenv load order).
+- Fixed environment variable interference between tests using isolated config evaluation.
+- Fixed hybrid mode prompt formatting.
+
+---
+
 ## [0.4.1] - 2026-02-20
 
 ### Fixed
