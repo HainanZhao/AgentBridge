@@ -22,8 +22,8 @@ Do not narrate your actions or thought process. Do not say things like "Let me c
 User Request: "${userRequest}"`;
 }
 
-function formatBackgroundTaskResult(request: string, result: string): string {
-  return `📢 Background task completed.\n\nOriginal Request: "${request}"\n\nResult:\n${result}`;
+function formatBackgroundTaskResult(jobId: string, result: string): string {
+  return `📢 Background task completed (job: ${jobId}).\n\n${result}`;
 }
 
 export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
@@ -59,7 +59,7 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
           return;
         }
 
-        const formattedResponse = formatBackgroundTaskResult(schedule.message, response);
+        const formattedResponse = formatBackgroundTaskResult(schedule.id, response);
         await sendTextToChat(chatId, normalizeOutgoingText(formattedResponse));
         logInfo('Async conversation result sent directly to chat', { scheduleId: schedule.id, chatId });
 
@@ -68,7 +68,7 @@ export function createScheduledJobHandler(deps: ScheduledJobHandlerDeps) {
         }
 
         if (appendContextToAgent) {
-          const contextUpdate = formatBackgroundTaskResult(schedule.message, response);
+          const contextUpdate = formatBackgroundTaskResult(schedule.id, response);
           void appendContextToAgent(contextUpdate);
         }
       } else {
