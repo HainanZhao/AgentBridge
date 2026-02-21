@@ -269,7 +269,7 @@ export async function processSingleTelegramMessage(params: ProcessSingleMessageP
         });
       });
 
-      const finalMsg = `[MODE: ASYNC] I've scheduled this task. I'll notify you when it's done. Reference: ${jobRef}`;
+      const finalMsg = `${fullResponse} (Reference: ${jobRef})`;
       await messageContext.sendText(finalMsg);
       return;
     }

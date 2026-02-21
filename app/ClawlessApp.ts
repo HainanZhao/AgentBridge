@@ -67,6 +67,14 @@ export class ClawlessApp {
       runScheduledPromptWithTempAcp: this.runScheduledPromptWithCli.bind(this),
       resolveTargetChatId: () => resolveChatId(this.lastIncomingChatId),
       getEnqueueMessage: () => this.messagingInitializer?.getEnqueueMessage(),
+      appendContextToAgent: async (text) => {
+        const acpRuntime = this.agentManager.getAcpRuntime();
+        if (acpRuntime && typeof acpRuntime.appendContext === 'function') {
+          await acpRuntime.appendContext(text);
+        } else {
+          logInfo('Warning: acpRuntime.appendContext not available in SchedulerManager');
+        }
+      },
     });
 
     this.messagingInitializer = new MessagingInitializer({

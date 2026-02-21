@@ -73,8 +73,8 @@ export class MessagingInitializer {
           messageGapThresholdMs: 15000,
           acpDebugStream: this.config.ACP_DEBUG_STREAM,
           runAcpPrompt: options.acpRuntime.runAcpPrompt,
-          scheduleAsyncJob: async (message, chatId) => {
-            await options.cronScheduler.executeOneTimeJobImmediately(message, 'Async User Task', { chatId });
+          scheduleAsyncJob: async (message, chatId, jobRef) => {
+            return await options.cronScheduler.executeOneTimeJobImmediately(message, jobRef || 'Async User Task', { chatId });
           },
           logInfo,
           getErrorMessage,

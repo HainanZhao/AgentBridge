@@ -43,6 +43,7 @@ export type AcpRuntime = {
     acpSessionReady: boolean;
     agentProcessRunning: boolean;
   };
+  appendContext: (text: string) => Promise<void>;
 };
 
 export function createAcpRuntime({

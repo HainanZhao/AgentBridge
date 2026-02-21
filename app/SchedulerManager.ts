@@ -14,6 +14,7 @@ export interface SchedulerManagerOptions {
   runScheduledPromptWithTempAcp: (promptForAgent: string, scheduleId: string) => Promise<string>;
   resolveTargetChatId: () => string | null;
   getEnqueueMessage: () => (messageContext: any) => Promise<void>;
+  appendContextToAgent: (text: string) => Promise<void>;
 }
 
 export class SchedulerManager {
@@ -34,14 +35,7 @@ export class SchedulerManager {
         return Promise.resolve();
       },
       normalizeOutgoingText,
-      enqueueMessage: async (ctx) => {
-        const enqueue = options.getEnqueueMessage();
-        if (enqueue) {
-          await enqueue(ctx);
-        } else {
-          logInfo('Warning: enqueueMessage not yet initialized when handling scheduled job');
-        }
-      },
+      appendContextToAgent: options.appendContextToAgent,
     });
 
     this.cronScheduler = new CronScheduler(handleScheduledJob, {
