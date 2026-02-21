@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import dotenv from 'dotenv';
 import { runConfigTui } from './configTui.js';
+import { getConfig, resetConfig } from '../utils/config.js';
 
 const ENV_KEY_MAP: Record<string, string> = {
   messagingPlatform: 'MESSAGING_PLATFORM',
@@ -239,8 +241,9 @@ function ensureMemoryFile(memoryFilePath: string) {
 }
 
 function ensureMemoryFromEnv() {
-  const configuredHome = process.env.CLAWLESS_HOME || DEFAULT_CLAWLESS_HOME;
-  const configuredMemoryPath = process.env.MEMORY_FILE_PATH || path.join(configuredHome, 'MEMORY.md');
+  const config = getConfig();
+  const configuredHome = config.CLAWLESS_HOME;
+  const configuredMemoryPath = config.MEMORY_FILE_PATH;
 
   if (!process.env.CLAWLESS_HOME) {
     process.env.CLAWLESS_HOME = configuredHome;
@@ -250,7 +253,7 @@ function ensureMemoryFromEnv() {
     process.env.MEMORY_FILE_PATH = configuredMemoryPath;
   }
 
-  return ensureMemoryFile(process.env.MEMORY_FILE_PATH || DEFAULT_MEMORY_FILE_PATH);
+  return ensureMemoryFile(configuredMemoryPath);
 }
 
 function logMemoryFileCreation(memoryState: { created: boolean; path: string }) {
@@ -272,6 +275,8 @@ function loadConfigFile(configPath: string) {
 }
 
 async function main() {
+  dotenv.config();
+
   const args = parseArgs(process.argv.slice(2));
 
   if (args.help) {
@@ -303,16 +308,14 @@ async function main() {
     process.exit(0);
   }
 
-  const memoryState = ensureMemoryFromEnv();
-  logMemoryFileCreation(memoryState);
-
   const loadedConfigPath = loadConfigFile(args.configPath);
   if (loadedConfigPath) {
     console.log(`[clawless] Loaded config: ${loadedConfigPath}`);
+    resetConfig();
   }
 
-  const postConfigMemoryState = ensureMemoryFromEnv();
-  logMemoryFileCreation(postConfigMemoryState);
+  const memoryState = ensureMemoryFromEnv();
+  logMemoryFileCreation(memoryState);
 
   const entryModuleUrl = new URL('../index.js', import.meta.url).href;
   await import(entryModuleUrl);

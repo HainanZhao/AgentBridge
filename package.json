@@ -16,6 +16,7 @@
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "prepublishOnly": "npm run build",
+    "test": "vitest run",
     "callback:health": "./scripts/callback-health.sh",
     "callback:test": "./scripts/callback-post.sh",
     "callback:test:chat": "./scripts/callback-post-chat.sh"
@@ -49,7 +50,8 @@
     "slackify-markdown": "^5.0.0",
     "sql.js": "^1.14.0",
     "telegraf": "^4.16.3",
-    "telegramify-markdown": "^1.3.2"
+    "telegramify-markdown": "^1.3.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
@@ -58,7 +60,8 @@
     "@types/node": "^24.5.2",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^1.6.1"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -20,6 +20,8 @@ type CreateAcpRuntimeParams = {
   acpTimeoutMs: number;
   acpNoOutputTimeoutMs: number;
   acpPrewarmRetryMs: number;
+  acpPrewarmMaxRetries: number;
+  acpMcpServersJson?: string;
   stderrTailMaxChars: number;
   buildPromptWithMemory: (userPrompt: string) => Promise<string>;
   ensureMemoryFile: () => void;
@@ -27,6 +29,21 @@ type CreateAcpRuntimeParams = {
   noOpAcpFileOperation: (params: any) => any;
   getErrorMessage: GetErrorMessageFn;
   logInfo: LogInfoFn;
+};
+
+export type AcpRuntime = {
+  buildAgentAcpArgs: () => string[];
+  runAcpPrompt: (promptText: string, onChunk?: (chunk: string) => void) => Promise<string>;
+  scheduleAcpPrewarm: (reason: string) => void;
+  shutdownAcpRuntime: (reason: string) => Promise<void>;
+  cancelActiveAcpPrompt: () => Promise<void>;
+  hasActiveAcpPrompt: () => boolean;
+  requestManualAbort: () => void;
+  getRuntimeState: () => {
+    acpSessionReady: boolean;
+    agentProcessRunning: boolean;
+  };
+  appendContext: (text: string) => Promise<void>;
 };
 
 export function createAcpRuntime({
@@ -37,6 +54,8 @@ export function createAcpRuntime({
   acpTimeoutMs,
   acpNoOutputTimeoutMs,
   acpPrewarmRetryMs,
+  acpPrewarmMaxRetries,
+  acpMcpServersJson,
   stderrTailMaxChars,
   buildPromptWithMemory,
   ensureMemoryFile,
@@ -44,14 +63,7 @@ export function createAcpRuntime({
   noOpAcpFileOperation,
   getErrorMessage,
   logInfo,
-}: CreateAcpRuntimeParams) {
-  const defaultAcpPrewarmMaxRetries = 10;
-  const acpPrewarmMaxRetriesEnv = process.env.ACP_PREWARM_MAX_RETRIES;
-  const parsedAcpPrewarmMaxRetries = Number.parseInt(acpPrewarmMaxRetriesEnv ?? `${defaultAcpPrewarmMaxRetries}`, 10);
-  const acpPrewarmMaxRetries = Number.isNaN(parsedAcpPrewarmMaxRetries)
-    ? defaultAcpPrewarmMaxRetries
-    : parsedAcpPrewarmMaxRetries;
-
+}: CreateAcpRuntimeParams): AcpRuntime {
   const agentCommand = cliAgent.getCommand();
   const agentDisplayName = cliAgent.getDisplayName();
   const commandToken = agentCommand.split(/[\\/]/).pop() || agentCommand;
@@ -257,6 +269,7 @@ export function createAcpRuntime({
       // Fall back to environment variable if agent didn't provide MCP servers
       if (mcpServers.length === 0) {
         const envResult = getMcpServersForSession({
+          acpMcpServersJson,
           logInfo,
           getErrorMessage,
           invalidEnvMessage: 'Invalid ACP_MCP_SERVERS_JSON; using empty mcpServers array',
