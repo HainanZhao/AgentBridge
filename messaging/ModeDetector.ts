@@ -52,12 +52,12 @@ Instructions:
 1. Analyze the User Request below.
 2. Determine if it is "Quick" (answer immediately) or "Async" (background task).
 3. Use ASYNC mode if:
-    - The task is expected to take longer than 10 seconds
+    - The task is expected to take longer than 1 minute
     - Examples: scanning a repo codebase, running tests, building projects, fetching URLs, processing multiple files, complex code analysis
     - IMPORTANT: If you choose ASYNC mode, DO NOT perform the task now. DO NOT call any tools. Just provide the confirmation message and exit.
 4. Use QUICK mode if:
-    - The task can be completed in under 10 seconds
-    - Simple operations like updating memory, recalling information, short queries
+    - The task can be completed in under 1 minute
+    - Simple operations like updating memory, recalling information, short queries, status updates, subagent CRUD operations
     - Simple questions that can be answered from knowledge
     - Tool use is acceptable if it's fast (e.g., reading a single small file, checking a config value)
 
