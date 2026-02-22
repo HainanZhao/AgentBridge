@@ -72,9 +72,12 @@ export class MessagingInitializer {
           acpDebugStream: this.config.ACP_DEBUG_STREAM,
           runAcpPrompt: options.acpRuntime.runAcpPrompt,
           scheduleAsyncJob: async (message, chatId, jobRef) => {
-            return await options.cronScheduler.executeOneTimeJobImmediately(message, jobRef || 'Async User Task', {
-              chatId,
-            });
+            return await options.cronScheduler.executeOneTimeJobImmediately(
+              message,
+              'Async User Task',
+              { chatId },
+              jobRef,
+            );
           },
           logInfo,
           getErrorMessage,
